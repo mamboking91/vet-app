@@ -16,15 +16,16 @@ type Propietario = {
   notas_adicionales: string | null;
 };
 
-interface EditarPropietarioPageProps {
+interface PageProps {
   params: {
     propietarioId: string;
   };
+  searchParams: Record<string, string | string[] | undefined>;
 }
 
 export const dynamic = 'force-dynamic';
 
-export default async function EditarPropietarioPage({ params }: EditarPropietarioPageProps) {
+export default async function EditarPropietarioPage({ params }: PageProps) {
   const cookieStore = cookies();
   const supabase = createServerComponentClient({ cookies: () => cookieStore });
   const { propietarioId } = params;
