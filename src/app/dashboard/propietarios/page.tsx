@@ -4,7 +4,7 @@ import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import Link from 'next/link';
 import { Button } from "@/components/ui/button";
-import PropietariosTable from './propietarioTable'; // Importa el nuevo componente de tabla
+import PropietariosTable from './PropietarioTable'; // Importa el nuevo componente de tabla
 
 // El tipo Propietario puede definirse aquí o importarse de un archivo compartido
 type Propietario = {
