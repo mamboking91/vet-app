@@ -106,7 +106,7 @@ export default function PropietariosTable({ propietarios }: PropietariosTablePro
                       <AlertDialogTitle>¿Estás absolutamente seguro?</AlertDialogTitle>
                       <AlertDialogDescription>
                         Esta acción no se puede deshacer. Esto eliminará permanentemente al propietario
-                        "{propietario.nombre_completo}" y todos sus datos asociados (dependiendo de la configuración de la base de datos).
+                        &quot;{propietario.nombre_completo}&quot; y todos sus datos asociados (dependiendo de la configuración de la base de datos).
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>

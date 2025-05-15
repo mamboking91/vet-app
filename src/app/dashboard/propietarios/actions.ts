@@ -100,7 +100,7 @@ export async function actualizarPropietario(
     };
   }
   
-  const updatePayload: { [key: string]: any } = {};
+  const updatePayload: { [key: string]: string | null } = {};
   if (validatedFields.data.nombre_completo !== undefined) updatePayload.nombre_completo = validatedFields.data.nombre_completo;
   if (validatedFields.data.email !== undefined) updatePayload.email = validatedFields.data.email || null;
   // ... (resto de los campos para updatePayload) ...

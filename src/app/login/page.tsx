@@ -85,12 +85,12 @@ export default function LoginPage() {
         </CardContent>
         <CardFooter className="flex flex-col items-center text-sm">
           {/* Este es un buen lugar para un enlace a una página de registro si la tuvieras */}
-          {/* <p>
+          <p>
             ¿No tienes una cuenta?{' '}
             <Link href="/signup" className="font-medium text-primary hover:underline">
               Regístrate
             </Link>
-          </p> */}
+          </p> 
         </CardFooter>
       </Card>
     </div>
