@@ -16,16 +16,15 @@ type Propietario = {
   notas_adicionales: string | null;
 };
 
-interface PageProps {
-  params: {
-    propietarioId: string;
-  };
-  searchParams: Record<string, string | string[] | undefined>;
-}
-
 export const dynamic = 'force-dynamic';
 
-export default async function EditarPropietarioPage({ params }: PageProps) {
+// Eliminamos la interfaz personalizada y usamos tipos directamente en la función
+export default async function EditarPropietarioPage({ 
+  params 
+}: { 
+  params: { propietarioId: string } 
+  searchParams?: { [key: string]: string | string[] | undefined }
+}) {
   const cookieStore = cookies();
   const supabase = createServerComponentClient({ cookies: () => cookieStore });
   const { propietarioId } = params;
