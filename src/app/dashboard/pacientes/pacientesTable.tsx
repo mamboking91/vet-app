@@ -13,9 +13,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-// Importa el tipo que definimos en page.tsx (o donde esté definido)
-// Asumimos que PacienteConPropietario ahora tiene 'propietarios' como un array:
-// propietarios: { id: string; nombre_completo: string | null; }[] | null;
 import type { PacienteConPropietario } from './page'; 
 
 interface PacientesTableProps {
@@ -23,52 +20,49 @@ interface PacientesTableProps {
 }
 
 export default function PacientesTable({ pacientes }: PacientesTableProps) {
-  // Lógica para eliminar (AlertDialog) y editar se añadirá aquí más tarde,
-  // similar a PropietariosTable.tsx
-
   if (!pacientes || pacientes.length === 0) {
-    return <p className="text-center text-gray-500">No hay pacientes registrados todavía.</p>;
+    return <p className="text-center text-gray-500 py-8">No hay pacientes registrados todavía.</p>;
   }
 
   return (
-    <Table>
-      <TableCaption>Una lista de todos los pacientes registrados.</TableCaption>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Nombre Paciente</TableHead>
-          <TableHead>Especie</TableHead>
-          <TableHead>Raza</TableHead>
-          <TableHead>Propietario</TableHead>
-          <TableHead className="text-right">Acciones</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {pacientes.map((paciente) => (
-          <TableRow key={paciente.id}>
-            <TableCell className="font-medium">{paciente.nombre}</TableCell>
-            <TableCell>{paciente.especie || '-'}</TableCell>
-            <TableCell>{paciente.raza || '-'}</TableCell>
-            <TableCell>
-              {/* MODIFICACIÓN AQUÍ: Accedemos al primer propietario en el array */}
-              {(paciente.propietarios && paciente.propietarios.length > 0 && paciente.propietarios[0])
-                ? paciente.propietarios[0].nombre_completo // Accede al nombre_completo del primer objeto propietario
-                : 'N/A'}
-            </TableCell>
-            <TableCell className="text-right space-x-2">
-              <Button asChild variant="outline" size="sm">
-                {/* Enlace para editar paciente (lo haremos después) */}
-                <Link href={`/dashboard/pacientes/${paciente.id}/editar`}>
-                  Editar
-                </Link>
-              </Button>
-              <Button variant="destructive" size="sm">
-                {/* Botón para eliminar paciente (lo haremos después) */}
-                Eliminar
-              </Button>
-            </TableCell>
+    <div className="border rounded-lg overflow-hidden">
+      <Table>
+        <TableCaption className="py-4">Una lista de todos los pacientes registrados en la clínica.</TableCaption>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="font-semibold">Nombre Paciente</TableHead>
+            <TableHead className="font-semibold">Especie</TableHead>
+            <TableHead className="font-semibold hidden md:table-cell">Raza</TableHead>
+            <TableHead className="font-semibold">Propietario</TableHead>
+            <TableHead className="text-right font-semibold">Acciones</TableHead>
           </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+        </TableHeader>
+        <TableBody>
+          {pacientes.map((paciente) => (
+            <TableRow key={paciente.id}>
+              <TableCell className="font-medium">{paciente.nombre}</TableCell>
+              <TableCell>{paciente.especie || '-'}</TableCell>
+              <TableCell className="hidden md:table-cell">{paciente.raza || '-'}</TableCell>
+              <TableCell>
+                {/* Accedemos al primer propietario en el array (si existe) */}
+                {(paciente.propietarios && paciente.propietarios.length > 0 && paciente.propietarios[0])
+                  ? paciente.propietarios[0].nombre_completo
+                  : 'N/A'}
+              </TableCell>
+              <TableCell className="text-right space-x-2">
+                <Button asChild variant="outline" size="sm">
+                  <Link href={`/dashboard/pacientes/${paciente.id}/editar`}>
+                    Editar
+                  </Link>
+                </Button>
+                <Button variant="destructive" size="sm">
+                  Eliminar
+                </Button>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
   );
 }

@@ -4,21 +4,18 @@ import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import Link from 'next/link';
 import { Button } from "@/components/ui/button";
-// Importaremos un componente de tabla para pacientes similar al de propietarios
-import PacientesTable from './pacientesTable'; // Lo crearemos a continuación
+import PacientesTable from './PacientesTable'; // Asegúrate que el nombre del archivo sea PascalCase
 
-// Definimos un tipo para los datos combinados de paciente y propietario
-// que vamos a mostrar en la tabla.
 export type PacienteConPropietario = {
   id: string;
   nombre: string;
   especie: string | null;
   raza: string | null;
-  fecha_nacimiento: string | null; // Considera formatear esto para la vista
-  propietarios: { // Este es el nombre de la relación como Supabase lo devuelve
-    id: string; // Podríamos necesitar el ID del propietario para enlaces
+  fecha_nacimiento: string | null;
+  propietarios: { // La propiedad 'propietarios' es un array de objetos propietario, o null
+    id: string;
     nombre_completo: string | null;
-  }[] | null; // El propietario podría ser null si la relación lo permite (aunque la nuestra no)
+  }[] | null; // <--- VUELVE A SER UN ARRAY AQUÍ
 };
 
 export const dynamic = 'force-dynamic';
@@ -27,10 +24,6 @@ export default async function PacientesPage() {
   const cookieStore = cookies();
   const supabase = createServerComponentClient({ cookies: () => cookieStore });
 
-  // Fetching de datos: seleccionamos campos de 'pacientes'
-  // y de la tabla relacionada 'propietarios', específicamente 'nombre_completo' e 'id'.
-  // Supabase infiere la relación por la clave foránea.
-  // La sintaxis 'tabla_relacionada (campo1, campo2)' es clave.
   const { data: pacientesData, error } = await supabase
     .from('pacientes')
     .select(`
@@ -45,15 +38,18 @@ export default async function PacientesPage() {
 
   if (error) {
     console.error('Error fetching pacientes:', error);
-    return <p>Error al cargar los pacientes: {error.message}. Revisa la consola.</p>;
+    return <p className="text-red-500">Error al cargar los pacientes: {error.message}. Por favor, revisa la consola del servidor.</p>;
   }
   
+  // Puedes quitar o mantener este log para futuras depuraciones.
+  // console.log("Datos CRUDOS de pacientes desde Supabase (page.tsx):", JSON.stringify(pacientesData, null, 2));
+
   const pacientes = (pacientesData || []) as PacienteConPropietario[];
 
   return (
-    <div className="container mx-auto py-10">
+    <div className="container mx-auto py-10 px-4 md:px-6">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">Gestión de Pacientes</h1>
+        <h1 className="text-2xl md:text-3xl font-bold">Gestión de Pacientes</h1>
         <Button asChild>
           <Link href="/dashboard/pacientes/nuevo">Añadir Nuevo Paciente</Link>
         </Button>
