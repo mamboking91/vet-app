@@ -4,7 +4,7 @@ import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import Link from 'next/link';
 import { Button } from "@/components/ui/button";
-import PacientesTable from './PacientesTable'; // Asegúrate que el nombre del archivo sea PascalCase
+import PacientesTable from './PacientesTable';
 
 export type PacienteConPropietario = {
   id: string;
