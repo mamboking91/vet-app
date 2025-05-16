@@ -118,5 +118,10 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-family: var(--font-sans); /* O directamente var(--font-geist-sans) */
+  }
+  /* Opcional: Aplicar la fuente mono a elementos de código */
+  code, pre, kbd, samp {
+    font-family: var(--font-mono); /* O directamente var(--font-geist-mono) */
   }
 }

@@ -18,7 +18,7 @@ export type PacienteConPropietario = {
   propietarios: { // Este es el nombre de la relación como Supabase lo devuelve
     id: string; // Podríamos necesitar el ID del propietario para enlaces
     nombre_completo: string | null;
-  } | null; // El propietario podría ser null si la relación lo permite (aunque la nuestra no)
+  }[] | null; // El propietario podría ser null si la relación lo permite (aunque la nuestra no)
 };
 
 export const dynamic = 'force-dynamic';

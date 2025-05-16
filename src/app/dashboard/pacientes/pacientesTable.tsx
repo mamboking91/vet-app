@@ -13,9 +13,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-// Importa el tipo que definimos en page.tsx
+// Importa el tipo que definimos en page.tsx (o donde esté definido)
+// Asumimos que PacienteConPropietario ahora tiene 'propietarios' como un array:
+// propietarios: { id: string; nombre_completo: string | null; }[] | null;
 import type { PacienteConPropietario } from './page'; 
-// (O define el tipo aquí, o muévelo a un archivo de tipos compartido, ej: types.ts)
 
 interface PacientesTableProps {
   pacientes: PacienteConPropietario[];
@@ -48,8 +49,10 @@ export default function PacientesTable({ pacientes }: PacientesTableProps) {
             <TableCell>{paciente.especie || '-'}</TableCell>
             <TableCell>{paciente.raza || '-'}</TableCell>
             <TableCell>
-              {/* Accedemos al nombre del propietario a través del objeto anidado */}
-              {paciente.propietarios?.nombre_completo || 'N/A'}
+              {/* MODIFICACIÓN AQUÍ: Accedemos al primer propietario en el array */}
+              {(paciente.propietarios && paciente.propietarios.length > 0 && paciente.propietarios[0])
+                ? paciente.propietarios[0].nombre_completo // Accede al nombre_completo del primer objeto propietario
+                : 'N/A'}
             </TableCell>
             <TableCell className="text-right space-x-2">
               <Button asChild variant="outline" size="sm">
