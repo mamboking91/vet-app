@@ -3,9 +3,9 @@ import React from 'react';
 import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { notFound } from 'next/navigation';
-import EditarPropietarioForm from './EditarPropietarioForm'; // Asegúrate que esta ruta sea correcta
+import EditarPropietarioForm from './EditarPropietarioForm';
 
-// Define el tipo Propietario (o impórtalo si lo tienes en un archivo global de tipos)
+// Define el tipo Propietario (asegúrate que esté completo)
 type Propietario = {
   id: string;
   nombre_completo: string;
@@ -13,44 +13,36 @@ type Propietario = {
   telefono: string | null;
   direccion: string | null;
   notas_adicionales: string | null;
-  // Asegúrate de que todos los campos que seleccionas de Supabase estén aquí
+  // otros campos que puedas necesitar o que devuelva select('*')
 };
 
-// Define la estructura de las props para esta página específica
-// Esto es lo que Next.js pasará a tu componente de página
-interface EditarPropietarioPageProps {
-  params: {
-    propietarioId: string; // El nombre debe coincidir con el nombre de la carpeta dinámica: [propietarioId]
-  };
-  searchParams?: { // Opcional, si no usas searchParams, puedes omitirlo
-    [key: string]: string | string[] | undefined;
-  };
-}
-
-// Esta directiva es importante para páginas que deben obtener datos en cada solicitud
 export const dynamic = 'force-dynamic';
 
-export default async function EditarPropietarioPage({ params }: EditarPropietarioPageProps) {
+// Cambiamos la forma de tipar las props: directamente en la firma de la función.
+export default async function EditarPropietarioPage({
+  params,
+  // searchParams, // Puedes incluir searchParams si los usas, si no, puedes omitirlo.
+}: {
+  params: { propietarioId: string }; // 'propietarioId' debe coincidir con tu carpeta [propietarioId]
+  searchParams?: { [key: string]: string | string[] | undefined };
+}) {
   const cookieStore = cookies();
   const supabase = createServerComponentClient({ cookies: () => cookieStore });
   
-  // Extraemos el propietarioId de params
-  const { propietarioId } = params;
+  const { propietarioId } = params; // Accedemos a propietarioId desde params
 
   const { data: propietarioData, error } = await supabase
     .from('propietarios')
     .select('*') // Selecciona todos los campos para el formulario
     .eq('id', propietarioId)
-    .single(); // Esperamos un solo resultado
+    .single();
 
   if (error || !propietarioData) {
     console.error("Error fetching propietario for edit or propietario not found:", error);
-    notFound(); // Muestra una página 404 si no se encuentra o hay error
+    notFound();
   }
 
-  // Hacemos un type assertion aquí después de verificar que no es null/undefined
-  // y que no hubo error. Asegúrate que el tipo Propietario coincida
-  // con los campos que devuelve .select('*').
+  // Type assertion después de verificar el error y los datos
   const propietario = propietarioData as Propietario;
 
   return (
