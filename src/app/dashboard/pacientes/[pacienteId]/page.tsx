@@ -3,15 +3,16 @@ import React from 'react';
 import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { notFound } from 'next/navigation';
- import Link from 'next/link';
+import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableCaption } from '@/components/ui/table';
-import { ChevronLeft, PlusCircle } from 'lucide-react'; // Iconos
-import { format } from 'date-fns'; // Para formatear fechas
-import { es } from 'date-fns/locale'; // Para formato de fecha en español
+// Ya no necesitamos Table, TableCell, etc., aquí directamente para el historial
+import { ChevronLeft, PlusCircle } from 'lucide-react';
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
+import HistorialMedicoTabla from './historial/HistorialMedicoTabla'; // <--- IMPORTA EL COMPONENTE CLIENTE
 
-// Tipo para el paciente (puedes refinarlo o importarlo si ya lo tienes más completo)
+// Tipos
 type PacienteDetalle = {
   id: string;
   nombre: string;
@@ -22,21 +23,20 @@ type PacienteDetalle = {
   microchip_id: string | null;
   color: string | null;
   notas_adicionales: string | null;
-  propietarios: { // Asumiendo que 'propietarios' es un objeto, como corregimos antes
+  propietarios: {
     id: string;
     nombre_completo: string | null;
   } | null;
 };
 
-// Tipo para una entrada del historial médico
 type HistorialMedicoEntrada = {
   id: string;
-  fecha_evento: string; // Viene como string de la BD, la formatearemos
-  tipo: string; // El ENUM se leerá como string
+  fecha_evento: string;
+  tipo: string;
   descripcion: string;
   diagnostico: string | null;
   tratamiento_indicado: string | null;
-  notas_seguimiento: string | null;
+  notas_seguimiento: string | null; 
 };
 
 interface DetallePacientePageProps {
@@ -52,33 +52,26 @@ export default async function DetallePacientePage({ params }: DetallePacientePag
   const supabase = createServerComponentClient({ cookies: () => cookieStore });
   const { pacienteId } = params;
 
-  // 1. Obtener datos del paciente (incluyendo el propietario)
+  // Obtener datos del paciente
   const { data: pacienteData, error: pacienteError } = await supabase
     .from('pacientes')
-    .select(`
-      *,
-      propietarios (id, nombre_completo)
-    `)
+    .select(`*, propietarios (id, nombre_completo)`)
     .eq('id', pacienteId)
     .single();
 
   if (pacienteError || !pacienteData) {
-    console.error("Error fetching paciente details or paciente not found:", pacienteError);
+    console.error("DetallePacientePage: Error fetching paciente details or paciente not found:", pacienteError);
     notFound();
   }
-  const paciente = pacienteData as PacienteDetalle; // Type assertion
+  const paciente = pacienteData as PacienteDetalle;
 
-  // 2. Obtener el historial médico del paciente
+  // Obtener el historial médico del paciente
   const { data: historialData, error: historialError } = await supabase
     .from('historiales_medicos')
-    .select('*')
+    .select('id, fecha_evento, tipo, descripcion, diagnostico, tratamiento_indicado, notas_seguimiento') // Selecciona los campos que necesite HistorialMedicoTabla
     .eq('paciente_id', pacienteId)
-    .order('fecha_evento', { ascending: false }); // Más recientes primero
+    .order('fecha_evento', { ascending: false });
 
-  if (historialError) {
-    console.error("Error fetching medical history:", historialError);
-    // No hacemos notFound() aquí, el paciente existe, pero podríamos mostrar un error de historial
-  }
   const historial = (historialData || []) as HistorialMedicoEntrada[];
 
   return (
@@ -127,52 +120,23 @@ export default async function DetallePacientePage({ params }: DetallePacientePag
       <div className="mb-6 flex justify-between items-center">
         <h2 className="text-xl md:text-2xl font-semibold">Historial Médico</h2>
         <Button asChild>
-          {/* Enlazará a la página/modal para añadir nueva entrada */}
           <Link href={`/dashboard/pacientes/${pacienteId}/historial/nuevo`}> 
-            <PlusCircle className="mr-2 h-4 w-4" /> Añadir Entrada
+            <span className="flex items-center">
+              <PlusCircle className="mr-2 h-4 w-4" /> 
+              Añadir Entrada
+            </span>
           </Link>
         </Button>
       </div>
 
-      {historialError && <p className="text-red-500">Error al cargar el historial médico: {historialError.message}</p>}
+      {historialError && <p className="text-red-500 mb-4">Error al cargar el historial médico: {historialError.message}</p>}
       
-      {historial.length === 0 && !historialError && (
-        <p className="text-gray-500">Este paciente aún no tiene entradas en su historial médico.</p>
-      )}
-
-      {historial.length > 0 && (
-        <Card>
-          <CardContent className="p-0"> {/* Quitamos padding para que la tabla ocupe todo */}
-            <Table>
-              <TableCaption className="mt-4">Registros del historial médico de {paciente.nombre}.</TableCaption>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Fecha Evento</TableHead>
-                  <TableHead>Tipo</TableHead>
-                  <TableHead>Descripción</TableHead>
-                  <TableHead className="hidden md:table-cell">Diagnóstico</TableHead>
-                  <TableHead className="hidden lg:table-cell">Tratamiento</TableHead>
-                  {/* <TableHead className="text-right">Acciones</TableHead> */}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {historial.map((entrada) => (
-                  <TableRow key={entrada.id}>
-                    <TableCell>{format(new Date(entrada.fecha_evento), 'PPP', { locale: es })}</TableCell>
-                    <TableCell>{entrada.tipo}</TableCell>
-                    <TableCell className="max-w-xs truncate" title={entrada.descripcion}>{entrada.descripcion}</TableCell>
-                    <TableCell className="hidden md:table-cell">{entrada.diagnostico || '-'}</TableCell>
-                    <TableCell className="hidden lg:table-cell">{entrada.tratamiento_indicado || '-'}</TableCell>
-                    {/* <TableCell className="text-right">
-                      <Button variant="outline" size="sm">Ver/Editar</Button>
-                    </TableCell> */}
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      )}
+      {/* Usamos el nuevo componente cliente para la tabla del historial */}
+      <HistorialMedicoTabla 
+        historial={historial} 
+        pacienteId={paciente.id}
+        nombrePaciente={paciente.nombre} 
+      />
     </div>
   );
 }
