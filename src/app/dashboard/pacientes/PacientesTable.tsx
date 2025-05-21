@@ -26,7 +26,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"; // Importa AlertDialog
 import { eliminarPaciente } from './actions'; // Importa la Server Action
-import type { PacienteConPropietario } from './page'; 
+import type { PacienteConPropietario } from './types'; 
 
 interface PacientesTableProps {
   pacientes: PacienteConPropietario[];
@@ -89,7 +89,9 @@ export default function PacientesTable({ pacientes }: PacientesTableProps) {
                 <TableCell>{paciente.especie || '-'}</TableCell>
                 <TableCell className="hidden md:table-cell">{paciente.raza || '-'}</TableCell>
                 <TableCell>
-                  {paciente.propietarios?.nombre_completo || 'N/A'}
+                {(paciente.propietarios && paciente.propietarios.length > 0 && paciente.propietarios[0])
+                ? paciente.propietarios[0].nombre_completo
+                 : 'N/A'}
                 </TableCell>
                 <TableCell className="text-right space-x-2">
                   <Button asChild variant="outline" size="sm">
