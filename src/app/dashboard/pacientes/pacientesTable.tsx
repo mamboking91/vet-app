@@ -13,7 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import type { PacienteConPropietario } from './page'; 
+import type { PacienteConPropietario } from './types'; // <--- CAMBIO AQUÍ: Importa desde './types'
 
 interface PacientesTableProps {
   pacientes: PacienteConPropietario[];
@@ -44,7 +44,6 @@ export default function PacientesTable({ pacientes }: PacientesTableProps) {
               <TableCell>{paciente.especie || '-'}</TableCell>
               <TableCell className="hidden md:table-cell">{paciente.raza || '-'}</TableCell>
               <TableCell>
-                {/* Accedemos al primer propietario en el array (si existe) */}
                 {(paciente.propietarios && paciente.propietarios.length > 0 && paciente.propietarios[0])
                   ? paciente.propietarios[0].nombre_completo
                   : 'N/A'}
