@@ -6,29 +6,6 @@ export type PacienteParaSelector = {
     nombre_display: string; // Ejemplo: "Bobby (Perro) - Dueño: Juan Pérez"
   };
   
-  // Información del paciente tal como se anida en CitaConDetalles (para mostrar en listas/agendas)
-  export type PacienteInfoForCita = {
-    id: string;
-    nombre: string;
-    propietarios: {
-      id: string;
-      nombre_completo: string | null;
-    } | null; 
-  } | null; 
-  
-  // Tipo completo para mostrar una cita con detalles del paciente (usado en CitasAgendaDiaria)
-  export type CitaConDetalles = {
-    id: string;
-    fecha_hora_inicio: string; // String ISO de la base de datos
-    fecha_hora_fin: string | null; // String ISO de la base de datos
-    duracion_estimada_minutos: number | null;
-    motivo: string | null;
-    tipo: string | null;       // Valor del ENUM tipo_cita_opciones de la BD
-    estado: string;            // Valor del ENUM estado_cita de la BD
-    pacientes: PacienteInfoForCita; 
-    // veterinario_asignado_id?: string | null; // Descomenta si lo seleccionas y usas
-  };
-  
   // Opciones para el <Select> de Tipo de Cita en el formulario
   export const tiposDeCitaOpciones = [
     { value: "Consulta General", label: "Consulta General" },
@@ -49,6 +26,29 @@ export type PacienteParaSelector = {
   ] as const;
   export type EstadoCitaValue = typeof estadosDeCitaOpciones[number];
   
+  // Información del paciente tal como se anida en CitaConDetalles (para mostrar en listas/agendas)
+  export type PacienteInfoForCita = {
+    id: string;
+    nombre: string;
+    propietarios: {
+      id: string;
+      nombre_completo: string | null;
+    } | null; 
+  } | null; 
+  
+  // Tipo completo para mostrar una cita con detalles del paciente (usado en la vista de agenda/calendario)
+  export type CitaConDetalles = {
+    id: string;
+    fecha_hora_inicio: string; // String ISO de la base de datos
+    fecha_hora_fin: string | null; // String ISO de la base de datos
+    duracion_estimada_minutos: number | null;
+    motivo: string | null;
+    tipo: TipoCitaValue | null; // Usamos el tipo derivado del ENUM
+    estado: EstadoCitaValue;    // Usamos el tipo derivado del ENUM
+    pacientes: PacienteInfoForCita; 
+    // veterinario_asignado_id?: string | null; // Descomenta si lo seleccionas y usas
+  };
+  
   // Tipo para los datos que maneja el CitaForm internamente y para initialData
   // Todos los campos son strings porque los inputs HTML trabajan con strings.
   export type CitaFormData = {
@@ -57,11 +57,11 @@ export type PacienteParaSelector = {
     duracion_estimada_minutos: string;
     motivo: string;
     tipo: string;       // Debería ser TipoCitaValue o string vacío
-    estado: string;     // Debería ser EstadoCitaValue o string vacío
+    estado: string;     // Debería ser EstadoCitaValue o string vacío (especialmente en edición)
     notas_cita: string;
   };
   
-  // Tipo para el registro de cita tal como viene de la BD (antes de formatear para el form)
+  // Tipo para el registro de cita tal como viene de la BD (antes de formatear para el form de edición)
   export type CitaDBRecord = {
     id: string;
     paciente_id: string;
@@ -69,10 +69,27 @@ export type PacienteParaSelector = {
     fecha_hora_fin: string | null; // String ISO de Supabase
     duracion_estimada_minutos: number | null;
     motivo: string | null;
-    tipo: TipoCitaValue | null; // Coincide con los valores del ENUM
-    estado: EstadoCitaValue;    // Coincide con los valores del ENUM
+    tipo: TipoCitaValue | null;
+    estado: EstadoCitaValue;
     notas_cita: string | null;
-    veterinario_asignado_id: string | null; // Si lo tienes en tu tabla
+    veterinario_asignado_id: string | null;
     created_at: string;
     updated_at: string | null;
+  };
+  
+  // Tipos para la estructura de la cuadrícula del calendario mensual
+  export type DayInMonth = {
+    date: Date;             // Objeto Date para el día
+    isCurrentMonth: boolean;  // Si el día pertenece al mes que se está visualizando
+    isToday: boolean;         // Si es el día actual
+    dayNumber: number;        // El número del día (1-31)
+    citasDelDia: CitaConDetalles[]; // Array de citas para este día específico
+  };
+  
+  export type WeekInMonth = DayInMonth[]; // Un array de días representa una semana
+  
+  // Tipo para el objeto que agrupa citas por fecha (YYYY-MM-DD)
+  // Usado en CitasPage.tsx antes de transformarlo a 'semanas'
+  export type CitasAgrupadasPorFecha = {
+    [fecha: string]: CitaConDetalles[];
   };
