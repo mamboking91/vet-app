@@ -7,7 +7,8 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { ChevronLeft } from 'lucide-react';
 import ProcedimientoForm from '../../nuevo/ProcedimientoForm'; 
-import type { Procedimiento as ProcedimientoDBType } from '../../page'; 
+// Importamos el tipo Procedimiento desde la página de listado, donde está la definición "maestra".
+import type { Procedimiento as ProcedimientoType } from '../../page'; 
 
 interface EditarProcedimientoPageProps {
   params: {
@@ -27,24 +28,28 @@ export default async function EditarProcedimientoPage({ params }: EditarProcedim
     notFound();
   }
 
+  // La consulta ya seleccionaba 'notas_internas'.
+  // Usamos ProcedimientoType para tipar la respuesta de Supabase.
   const { data: procedimiento, error } = await supabase
     .from('procedimientos')
     .select('id, nombre, descripcion, duracion_estimada_minutos, precio, categoria, notas_internas')
     .eq('id', procedimientoId)
-    .single<ProcedimientoDBType>(); 
+    .single<ProcedimientoType>(); // Tipamos la respuesta con el tipo importado
 
   if (error || !procedimiento) {
     console.error(`[EditarProcedimientoPage] Error fetching procedimiento con ID ${procedimientoId} o no encontrado:`, error);
     notFound();
   }
   
+  // Preparamos los datos para el formulario.
+  // El tipo `ProcedimientoFormData` dentro de ProcedimientoForm espera strings.
   const initialDataForForm = {
-    nombre: procedimiento.nombre || '', // nombre es NOT NULL en DB, pero por si acaso
+    nombre: procedimiento.nombre || '', 
     descripcion: procedimiento.descripcion || '',
     duracion_estimada_minutos: procedimiento.duracion_estimada_minutos?.toString() || '',
-    precio: procedimiento.precio?.toString() || '', // precio es NOT NULL, pero toString() por seguridad
+    precio: procedimiento.precio?.toString() || '', 
     categoria: procedimiento.categoria || '',
-    notas_internas: procedimiento.notas_internas || '',
+    notas_internas: procedimiento.notas_internas || '', // Ahora no debería dar error de tipo
   };
 
   return (
@@ -58,7 +63,8 @@ export default async function EditarProcedimientoPage({ params }: EditarProcedim
         <h1 className="text-2xl md:text-3xl font-bold">Editar Procedimiento: {procedimiento.nombre}</h1>
       </div>
       <ProcedimientoForm 
-        initialData={initialDataForForm} 
+        initialData={initialDataForForm} // Ya no necesita 'as ProcedimientoType' aquí, 
+                                        // initialDataForForm ya está preparado para el form.
         procedimientoId={procedimiento.id}
       />
     </div>
