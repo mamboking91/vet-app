@@ -42,7 +42,7 @@ export default function DashboardLayout({
     { href: "/dashboard/pacientes", label: "Pacientes", icon: Dog },
     // Puedes decidir si Historiales tiene su propio enlace principal o se accede vía Pacientes
     // { href: "/dashboard/historiales", label: "Historiales", icon: ClipboardList, disabled: true },
-    { href: "/dashboard/citas", label: "Citas", icon: CalendarDays, disabled: true },
+    { href: "/dashboard/citas", label: "Citas", icon: CalendarDays },
     { href: "/dashboard/facturacion", label: "Facturación", icon: FileText },
     { href: "/dashboard/inventario", label: "Inventario", icon: Archive, disabled: true },
     { href: "/dashboard/procedimientos", label: "Procedimientos", icon: Wrench},
