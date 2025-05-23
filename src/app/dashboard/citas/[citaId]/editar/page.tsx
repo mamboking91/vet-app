@@ -6,14 +6,14 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { ChevronLeft } from 'lucide-react';
-import CitaForm from '../../nueva/CitaForm'; // Reutilizamos el CitaForm
+import CitaForm from '../../nueva/CitaForm';
 import { 
   type PacienteParaSelector, 
   type CitaDBRecord,
-  type CitaFormData,
-  tiposDeCitaOpciones, // Importamos las opciones para pasarlas al form
-  estadosDeCitaOpciones // Importamos las opciones para pasarlas al form
-} from '../../types'; // Importamos tipos desde el archivo centralizado
+  type CitaFormData
+  // Ya no necesitamos importar tiposDeCitaOpciones ni estadosDeCitaOpciones aquí
+  // si CitaForm los importa directamente.
+} from '../../types'; 
 
 interface EditarCitaPageProps {
   params: {
@@ -28,50 +28,49 @@ export default async function EditarCitaPage({ params }: EditarCitaPageProps) {
   const supabase = createServerComponentClient({ cookies: () => cookieStore });
   const { citaId } = params;
 
-  if (!citaId || citaId === 'undefined' || citaId.length !== 36) { // Simple validación de UUID
+  if (!citaId || citaId === 'undefined' || citaId.length !== 36) {
     console.error("[EditarCitaPage] citaId es inválido:", citaId);
     notFound();
   }
 
-  // 1. Obtener los datos de la cita a editar
   const { data: cita, error: citaError } = await supabase
     .from('citas')
     .select('*')
     .eq('id', citaId)
-    .single<CitaDBRecord>(); // Tipamos la respuesta de Supabase
+    .single<CitaDBRecord>();
 
   if (citaError || !cita) {
     console.error(`[EditarCitaPage] Error fetching cita con ID ${citaId} o no encontrada:`, citaError);
     notFound();
   }
 
-  // 2. Obtener la lista de todos los pacientes para el selector
   const { data: pacientesData, error: pacientesError } = await supabase
     .from('pacientes')
-    .select('id, nombre, especie, propietarios (nombre_completo)')
+    .select('id, nombre, especie, propietarios (id, nombre_completo)')
     .order('nombre', { ascending: true });
 
   if (pacientesError) {
     console.error("[EditarCitaPage] Error fetching pacientes para el selector:", pacientesError);
-    // No es un notFound() crítico, pero el selector de pacientes podría estar vacío
   }
 
   const pacientesParaSelector: PacienteParaSelector[] = (pacientesData || []).map(p => {
-    const propietarioNombre = p.propietarios?.nombre_completo || 'Propietario Desconocido';
+    const propietarioInfo = (p.propietarios && Array.isArray(p.propietarios) && p.propietarios.length > 0)
+                              ? p.propietarios[0]
+                              : null;
+    const propietarioNombre = propietarioInfo?.nombre_completo || 'Propietario Desconocido';
     const especieInfo = p.especie ? `(${p.especie})` : '';
     return {
       id: p.id,
-      nombre_display: `${p.nombre} ${especieInfo} - Dueño: ${propietarioNombre}`,
+      nombre_display: `${p.nombre} ${especieInfo} - Dueño: ${propietarioNombre || 'Desconocido'}`,
     };
   });
   
-  // Preparamos initialData para el CitaForm
   const fechaInicio = cita.fecha_hora_inicio ? new Date(cita.fecha_hora_inicio) : null;
   let fechaHoraInicioFormato = '';
   if (fechaInicio) {
     const offset = fechaInicio.getTimezoneOffset() * 60000;
     const localDate = new Date(fechaInicio.getTime() - offset);
-    fechaHoraInicioFormato = localDate.toISOString().slice(0, 16); // Formato YYYY-MM-DDTHH:MM
+    fechaHoraInicioFormato = localDate.toISOString().slice(0, 16);
   }
 
   const initialDataForForm: Partial<CitaFormData> = {
@@ -100,8 +99,9 @@ export default async function EditarCitaPage({ params }: EditarCitaPageProps) {
         initialData={initialDataForForm}
         citaId={cita.id}
         pacientes={pacientesParaSelector}
-        tiposDeCita={tiposDeCitaOpciones.map(t => t.value)} // Pasamos solo los values
-        estadosDeCita={estadosDeCitaOpciones} // Pasamos el array completo de strings
+        // --- LÍNEAS ELIMINADAS ---
+        // tiposDeCita={tiposDeCitaValues} 
+        // estadosDeCita={estadosDeCitaValues} 
       />
     </div>
   );

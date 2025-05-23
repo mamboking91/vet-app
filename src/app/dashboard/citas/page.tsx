@@ -1,7 +1,7 @@
 // app/dashboard/citas/page.tsx
 import React from 'react';
 import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
+import { cookies } from 'next/headers'; // <--- IMPORTACIÓN AÑADIDA
 import Link from 'next/link';
 import { Button } from "@/components/ui/button";
 import { PlusCircle, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -10,21 +10,21 @@ import {
   startOfMonth, 
   endOfMonth, 
   eachDayOfInterval, 
-  getDay, // getDay es para el número del día de la semana (0-6), puede no ser necesaria aquí directamente
   addMonths, 
   subMonths,
   isSameMonth,
   parse,
   isValid,
-  startOfWeek, // <--- IMPORTACIÓN AÑADIDA
-  endOfWeek,   // <--- IMPORTACIÓN AÑADIDA
-  isSameDay,   // <--- IMPORTACIÓN AÑADIDA
-  parseISO     // <--- IMPORTACIÓN CONFIRMADA (usada en la lógica de agrupación)
+  startOfWeek,
+  endOfWeek,
+  isSameDay,
+  parseISO
 } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 import CalendarioMensualCitas from './CalendarioMensualCitas';
-import type { CitaConDetalles, WeekInMonth, DayInMonth } from './types';
+// Asumimos que los tipos se importan desde tu archivo types.ts centralizado
+import type { CitaConDetalles, WeekInMonth, DayInMonth, CitaConArraysAnidados } from './types'; 
 
 export const dynamic = 'force-dynamic';
 
@@ -35,7 +35,7 @@ interface CitasPageProps {
 }
 
 export default async function CitasPage({ searchParams }: CitasPageProps) {
-  const cookieStore = cookies();
+  const cookieStore = cookies(); // Ahora 'cookies' está definido
   const supabase = createServerComponentClient({ cookies: () => cookieStore });
 
   let currentDate: Date;
@@ -49,7 +49,7 @@ export default async function CitasPage({ searchParams }: CitasPageProps) {
   const primerDiaDelMes = startOfMonth(currentDate);
   const ultimoDiaDelMes = endOfMonth(currentDate);
 
-  const { data: citasDelMesData, error: citasError } = await supabase
+  const { data: citasData, error: citasError } = await supabase
     .from('citas')
     .select(`
       id,
@@ -59,7 +59,14 @@ export default async function CitasPage({ searchParams }: CitasPageProps) {
       motivo,
       tipo,
       estado,
-      pacientes (id, nombre, propietarios (id, nombre_completo))
+      pacientes ( 
+        id,
+        nombre,
+        propietarios ( 
+          id,
+          nombre_completo
+        )
+      )
     `)
     .gte('fecha_hora_inicio', primerDiaDelMes.toISOString())
     .lte('fecha_hora_inicio', ultimoDiaDelMes.toISOString())
@@ -69,33 +76,44 @@ export default async function CitasPage({ searchParams }: CitasPageProps) {
     console.error('[CitasPage - Mensual] Error fetching citas:', citasError);
     return <p className="text-red-500">Error al cargar las citas del mes.</p>;
   }
-  const citasDelMes = (citasDelMesData || []) as CitaConDetalles[];
+  
+  const citasDelMesRaw = (citasData || []) as CitaConArraysAnidados[];
 
-  // Generar los días para la cuadrícula del calendario
-  const primerDiaVisible = startOfWeek(primerDiaDelMes, { locale: es, weekStartsOn: 1 }); // Lunes como inicio de semana
-  const ultimoDiaVisible = endOfWeek(ultimoDiaDelMes, { locale: es, weekStartsOn: 1 });   // Lunes como inicio de semana
+  const citasDelMesParaCalendario = citasDelMesRaw.map(citaRaw => {
+    const pacientePrincipal = (citaRaw.pacientes && citaRaw.pacientes.length > 0) ? citaRaw.pacientes[0] : null;
+    const propietarioPrincipal = (pacientePrincipal && pacientePrincipal.propietarios && pacientePrincipal.propietarios.length > 0) ? pacientePrincipal.propietarios[0] : null;
 
-  const diasParaCuadricula = eachDayOfInterval({
-    start: primerDiaVisible,
-    end: ultimoDiaVisible,
-  });
+    return {
+      ...citaRaw,
+      pacientes: pacientePrincipal ? {
+        id: pacientePrincipal.id,
+        nombre: pacientePrincipal.nombre,
+        propietarios: propietarioPrincipal ? {
+          id: propietarioPrincipal.id,
+          nombre_completo: propietarioPrincipal.nombre_completo,
+        } : null,
+      } : null,
+    };
+  }) as CitaConDetalles[];
+
 
   const semanas: WeekInMonth[] = [];
   let semanaActual: DayInMonth[] = [];
+  const primerDiaVisible = startOfWeek(primerDiaDelMes, { locale: es, weekStartsOn: 1 });
+  const ultimoDiaVisible = endOfWeek(ultimoDiaDelMes, { locale: es, weekStartsOn: 1 });
+  const diasParaCuadricula = eachDayOfInterval({ start: primerDiaVisible, end: ultimoDiaVisible });
 
   diasParaCuadricula.forEach((dia, index) => {
-    const citasDelDiaEspecifico = citasDelMes.filter(cita => 
-      isSameDay(parseISO(cita.fecha_hora_inicio), dia) // parseISO aquí es importante si fecha_hora_inicio es string ISO
+    const citasDelDiaEspecifico = citasDelMesParaCalendario.filter(cita => 
+      isSameDay(parseISO(cita.fecha_hora_inicio), dia)
     );
-
     semanaActual.push({
       date: dia,
       isCurrentMonth: isSameMonth(dia, currentDate),
-      isToday: isSameDay(dia, new Date()), // Compara con el objeto Date del día actual
+      isToday: isSameDay(dia, new Date()),
       dayNumber: parseInt(format(dia, 'd')),
       citasDelDia: citasDelDiaEspecifico
     });
-
     if ((index + 1) % 7 === 0 || index === diasParaCuadricula.length - 1) {
       semanas.push(semanaActual);
       semanaActual = [];
@@ -107,7 +125,7 @@ export default async function CitasPage({ searchParams }: CitasPageProps) {
 
   return (
     <div className="container mx-auto py-10 px-4 md:px-6">
-      <div className="flex flex-col md:flex-row justify-between md:items-center mb-8 gap-4">
+       <div className="flex flex-col md:flex-row justify-between md:items-center mb-8 gap-4">
         <div className="flex items-center gap-2">
           <Button variant="outline" size="icon" asChild>
             <Link href={`/dashboard/citas?vistaMes=${mesAnterior}`}>

@@ -5,31 +5,11 @@ import { cookies } from 'next/headers';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { ChevronLeft } from 'lucide-react';
-import CitaForm from './CitaForm'; // Crearemos este componente a continuación
-
-// Tipo para los pacientes en el selector (nombre del paciente y nombre del propietario)
-export type PacienteParaSelector = {
-  id: string; // ID del paciente
-  nombre_display: string; // "NombreMascota (Dueño: NombreDueño)"
-};
-
-// Valores del ENUM tipo_cita_opciones para pasar al formulario
-// Podríamos importarlos desde actions.ts si lo exportamos de allí,
-// o definirlos aquí si son estáticos y solo para este formulario.
-// Por ahora, los redefinimos para claridad, pero considera centralizarlos.
-const tiposDeCitaOpciones = [
-  { value: "Consulta General", label: "Consulta General" },
-  { value: "Vacunación", label: "Vacunación" },
-  { value: "Desparasitación", label: "Desparasitación" },
-  { value: "Revisión", label: "Revisión" },
-  { value: "Cirugía Programada", label: "Cirugía Programada" },
-  { value: "Urgencia", label: "Urgencia" },
-  { value: "Peluquería", label: "Peluquería" },
-  { value: "Otro", label: "Otro" },
-] as const; // 'as const' es importante para z.enum si se usa en el cliente
-
-export type TipoCitaOpcion = typeof tiposDeCitaOpciones[number]['value'];
-
+import CitaForm from './CitaForm';
+// Importa PacienteParaSelector desde el archivo centralizado de tipos
+import type { PacienteParaSelector } from '../types'; 
+// Ya no necesitamos importar tiposDeCitaOpciones o estadosDeCitaOpciones aquí
+// si CitaForm.tsx los importa directamente desde '../types'.
 
 export const dynamic = 'force-dynamic';
 
@@ -44,19 +24,21 @@ export default async function NuevaCitaPage() {
       id,
       nombre,
       especie,
-      propietarios (
-        nombre_completo
-      )
+      propietarios (id, nombre_completo) 
     `)
     .order('nombre', { ascending: true });
 
   if (pacientesError) {
-    console.error("Error fetching pacientes for select:", pacientesError);
-    // Considera mostrar un error o un estado vacío elegante
+    console.error("[NuevaCitaPage] Error fetching pacientes para select:", pacientesError);
+    // Considera mostrar un mensaje de error o un estado vacío elegante para el selector
   }
 
   const pacientesParaSelector: PacienteParaSelector[] = (pacientesData || []).map(p => {
-    const propietarioNombre = p.propietarios?.nombre_completo || 'Propietario Desconocido';
+    // Accedemos a propietarios como un array, según el error de TS anterior
+    const propietarioInfo = (p.propietarios && Array.isArray(p.propietarios) && p.propietarios.length > 0)
+                              ? p.propietarios[0]
+                              : null;
+    const propietarioNombre = propietarioInfo?.nombre_completo || 'Propietario Desconocido';
     const especieInfo = p.especie ? `(${p.especie})` : '';
     return {
       id: p.id,
@@ -76,8 +58,9 @@ export default async function NuevaCitaPage() {
       </div>
       <CitaForm 
         pacientes={pacientesParaSelector}
-        tiposDeCita={tiposDeCitaOpciones.map(t => t.value)} // Pasamos solo los valores para el enum de Zod si es necesario
-                                                          // o el array completo de objetos para el Select
+        // Ya no pasamos tiposDeCita ni estadosDeCita como props
+        // si CitaForm.tsx los importa directamente desde '../types.ts'
+        // (lo cual hicimos en la última versión de CitaForm.tsx)
       />
     </div>
   );

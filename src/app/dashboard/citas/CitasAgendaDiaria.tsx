@@ -1,28 +1,16 @@
 // app/dashboard/citas/CitasAgendaDiaria.tsx
 "use client";
 
-import React, { useState, useTransition } from 'react';
+import React from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation'; // <--- AÑADE ESTA LÍNEA
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Edit3Icon, UserIcon, DogIcon, ClockIcon, XCircleIcon } from 'lucide-react'; // Añadido XCircleIcon
+import { Edit3Icon, UserIcon, DogIcon, ClockIcon } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
-import type { CitaConDetalles, EstadoCitaValue } from './types'; // Importa el tipo de estado
-import { cambiarEstadoCita } from './actions'; // Importa la acción para cambiar estado
+import type { CitaConDetalles } from './types'; 
 
 interface CitasAgendaDiariaProps {
   citas: CitaConDetalles[];
@@ -43,31 +31,12 @@ const getEstadoBadgeVariant = (estado?: string): "default" | "destructive" | "ou
 };
 
 export default function CitasAgendaDiaria({ citas, fechaSeleccionada }: CitasAgendaDiariaProps) {
-  const router = useRouter();
-  const [isCanceling, startCancelTransition] = useTransition(); // Transición para cancelar
-  const [actionError, setActionError] = useState<string | null>(null);
+  const router = useRouter(); // Ahora useRouter está definido
 
-  const handleCitaClick = (citaId: string) => {
-    console.log("Ver detalles de cita ID:", citaId);
-    // Futuro: router.push(`/dashboard/citas/${citaId}`); // Para ver detalle si se implementa
+  const handleCitaClick = (citaId: string, event: React.MouseEvent) => {
+    event.stopPropagation(); 
+    router.push(`/dashboard/citas/${citaId}/editar`); 
   };
-
-  const handleCancelarCita = async (cita: CitaConDetalles) => {
-    setActionError(null);
-    startCancelTransition(async () => {
-      // Asumimos que tenemos el pacienteId disponible para revalidar su página.
-      // El tipo CitaConDetalles tiene pacientes.id
-      const pacienteId = cita.pacientes?.id;
-      const result = await cambiarEstadoCita(cita.id, "Cancelada por Clínica", pacienteId || undefined);
-      if (!result.success) {
-        setActionError(result.error?.message || "Error al cancelar la cita.");
-        console.error("Error al cancelar cita (cliente):", result.error);
-      } else {
-        router.refresh(); // Refresca la vista actual para mostrar el estado actualizado
-      }
-    });
-  };
-
 
   if (citas.length === 0) {
     return (
@@ -81,11 +50,7 @@ export default function CitasAgendaDiaria({ citas, fechaSeleccionada }: CitasAge
 
   return (
     <div className="space-y-6">
-      {actionError && (
-        <div className="mb-4 p-3 bg-red-100 text-red-700 border border-red-300 rounded-md" role="alert">
-          Error: {actionError}
-        </div>
-      )}
+      {/* Aquí podrías añadir un manejo de error si actionError existiera */}
       {citas.map((cita) => (
         <Card 
           key={cita.id} 
@@ -104,7 +69,7 @@ export default function CitasAgendaDiaria({ citas, fechaSeleccionada }: CitasAge
                   {cita.tipo || 'Cita General'}
                 </CardDescription>
               </div>
-              <Badge variant={getEstadoBadgeVariant(cita.estado)} className="text-xs whitespace-nowrap">
+              <Badge variant={getEstadoBadgeVariant(cita.estado) as "default" | "destructive" | "outline" | "secondary" | null | undefined} className="text-xs whitespace-nowrap"> {/* Ajuste de tipo para variant */}
                 {cita.estado}
               </Badge>
             </div>
@@ -137,49 +102,17 @@ export default function CitasAgendaDiaria({ citas, fechaSeleccionada }: CitasAge
                 variant="outline" 
                 size="sm" 
                 className="px-2 py-1 h-auto text-xs"
+                onClick={(e) => { // Para que el click en el botón no active el de la Card (si estuviera activo)
+                  e.stopPropagation(); 
+                  // router.push(`/dashboard/citas/${cita.id}/editar`); // También podrías hacer la navegación aquí
+                }}
               >
                 <Link href={`/dashboard/citas/${cita.id}/editar`}>
                   <Edit3Icon className="h-3 w-3 mr-1" />
-                  Editar/Ver
+                  Editar/Detalles
                 </Link>
               </Button>
-              {/* Botón y AlertDialog para Cancelar Cita */}
-              {/* Solo mostrar si la cita no está ya Cancelada o Completada */}
-              {cita.estado !== 'Completada' && 
-               !cita.estado.toLowerCase().includes('cancelada') && (
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button 
-                      variant="destructive" 
-                      size="sm" 
-                      className="px-2 py-1 h-auto text-xs"
-                      disabled={isCanceling}
-                    >
-                      <XCircleIcon className="h-3 w-3 mr-1" />
-                      Cancelar Cita
-                    </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>¿Seguro que quieres cancelar esta cita?</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        Cita para: {cita.pacientes?.nombre || 'N/A'} el {format(parseISO(cita.fecha_hora_inicio), 'PPP p', { locale: es })}.
-                        Esta acción cambiará el estado de la cita a "Cancelada por Clínica".
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel disabled={isCanceling}>No, mantener</AlertDialogCancel>
-                      <AlertDialogAction
-                        onClick={() => handleCancelarCita(cita)}
-                        disabled={isCanceling}
-                        className="bg-destructive hover:bg-destructive/90"
-                      >
-                        {isCanceling ? "Cancelando..." : "Sí, cancelar cita"}
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
-              )}
+              {/* Lógica para el botón de cancelar (AlertDialog) se añadiría aquí si es necesario */}
             </div>
           </CardContent>
         </Card>
