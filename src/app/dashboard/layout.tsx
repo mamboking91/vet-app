@@ -44,7 +44,7 @@ export default function DashboardLayout({
     // { href: "/dashboard/historiales", label: "Historiales", icon: ClipboardList, disabled: true },
     { href: "/dashboard/citas", label: "Citas", icon: CalendarDays },
     { href: "/dashboard/facturacion", label: "Facturación", icon: FileText },
-    { href: "/dashboard/inventario", label: "Inventario", icon: Archive, disabled: true },
+    { href: "/dashboard/inventario", label: "Inventario", icon: Archive},
     { href: "/dashboard/procedimientos", label: "Procedimientos", icon: Wrench},
     { href: "/dashboard/informes", label: "Informes", icon: FileText, disabled: true },
   ];

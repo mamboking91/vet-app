@@ -48,8 +48,8 @@ const geistMono = localFont({
 
 export const metadata: Metadata = {
   // Has cambiado "Create Next App", ¿verdad? Si no, cámbialo.
-  title: "Clínica Veterinaria Las Almenas", // Ejemplo
-  description: "Sistema de gestión para la Clínica Veterinaria Las Almenas", // Ejemplo
+  title: "Gomera Mascotas", // Ejemplo
+  description: "Sistema de gestión Veterianaria", // Ejemplo
 };
 
 export default function RootLayout({
