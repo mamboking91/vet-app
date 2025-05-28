@@ -6,19 +6,18 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { ChevronLeft } from 'lucide-react';
-import ProductoCatalogoForm from '../../nuevo/ProductoCatalogoForm'; // Reutilizaremos el formulario
-// Asumimos que tienes un tipo para los datos del catálogo en types.ts
-// similar a ProductoCatalogoFormData o un tipo específico para datos de la BD.
-// Por ahora, usaremos un tipo local y lo adaptaremos.
-import type { ProductoCatalogoFormData } from '../../types'; // Importa desde tu types.ts
+import ProductoCatalogoForm from '../../nuevo/ProductoCatalogoForm'; // <--- VERIFICA/AÑADE ESTA IMPORTACIÓN
+import type { 
+  ProductoCatalogoFormData, 
+  UnidadMedidaInventarioValue 
+} from '../../types'; 
 
-// Este tipo debería reflejar los campos de la tabla productos_inventario
 type ProductoCatalogoDB = {
   id: string;
   nombre: string;
   descripcion: string | null;
   codigo_producto: string | null;
-  unidad: string | null; // Debería ser UnidadMedidaInventarioValue | null
+  unidad: UnidadMedidaInventarioValue | null;
   stock_minimo: number | null;
   precio_compra: number | null;
   precio_venta: number | null;
@@ -28,7 +27,7 @@ type ProductoCatalogoDB = {
 
 interface EditarProductoCatalogoPageProps {
   params: {
-    productoId: string; // Debe coincidir con el nombre de la carpeta [productoId]
+    productoId: string;
   };
 }
 
@@ -45,23 +44,21 @@ export default async function EditarProductoCatalogoPage({ params }: EditarProdu
   }
 
   const { data: producto, error } = await supabase
-    .from('productos_inventario') // Leemos de la tabla base, no de la vista con stock calculado
+    .from('productos_inventario')
     .select('id, nombre, descripcion, codigo_producto, unidad, stock_minimo, precio_compra, precio_venta, requiere_lote, notas_internas')
     .eq('id', productoId)
-    .single<ProductoCatalogoDB>();
+    .single<ProductoCatalogoDB>(); 
 
   if (error || !producto) {
     console.error(`[EditarProductoCatalogoPage] Error fetching producto con ID ${productoId} o no encontrado:`, error);
     notFound();
   }
-
-  // Preparamos initialData para ProductoCatalogoForm
-  // Convierte nulls a string vacíos y numbers a string para los inputs del formulario
+  
   const initialDataForForm: Partial<ProductoCatalogoFormData> = {
-    nombre: producto.nombre || '',
+    nombre: producto.nombre || '', 
     descripcion: producto.descripcion || '',
     codigo_producto: producto.codigo_producto || '',
-    unidad: producto.unidad || 'Unidad', // Default si es null
+    unidad: producto.unidad || ('Unidad' as UnidadMedidaInventarioValue), 
     stock_minimo: producto.stock_minimo?.toString() || '0',
     precio_compra: producto.precio_compra?.toString() || '',
     precio_venta: producto.precio_venta?.toString() || '',
@@ -81,7 +78,7 @@ export default async function EditarProductoCatalogoPage({ params }: EditarProdu
       </div>
       <ProductoCatalogoForm 
         initialData={initialDataForForm}
-        productoId={producto.id} // Pasamos el ID para que el form sepa que es modo edición
+        productoId={producto.id}
       />
     </div>
   );
