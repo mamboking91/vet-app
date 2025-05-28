@@ -27,11 +27,10 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Edit3Icon, Trash2Icon, EyeIcon, PlusCircle } from 'lucide-react';
-import { format, parseISO } from 'date-fns'; // parseISO para manejar fechas de la BD
+import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
-// Importamos el tipo desde la página de listado (o un archivo types.ts si lo moviste)
 import type { ProductoConStock } from './page'; 
-import { eliminarProductoCatalogo } from './actions'; // Importamos la acción de eliminar
+import { eliminarProductoCatalogo } from './actions';
 
 interface ProductosInventarioTableProps {
   productos: ProductoConStock[];
@@ -39,7 +38,7 @@ interface ProductosInventarioTableProps {
 
 const formatCurrency = (amount: number | null | undefined): string => {
   if (typeof amount !== 'number' || isNaN(amount)) {
-    return '-'; // O 'N/A'
+    return '-';
   }
   return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(amount);
 };
@@ -57,7 +56,7 @@ export default function ProductosInventarioTable({ productos }: ProductosInventa
         setDeleteError(result.error?.message || "Ocurrió un error al eliminar el producto.");
         console.error("Error al eliminar producto del catálogo (cliente):", result.error);
       } else {
-        router.refresh(); // Refresca la lista
+        router.refresh();
       }
     });
   };
@@ -68,8 +67,10 @@ export default function ProductosInventarioTable({ productos }: ProductosInventa
         <p className="text-gray-500 mb-4">No hay productos en el catálogo de inventario todavía.</p>
         <Button asChild>
           <Link href="/dashboard/inventario/nuevo">
-            <PlusCircle className="mr-2 h-4 w-4" />
-            Añadir Primer Producto
+            <span className="flex items-center">
+              <PlusCircle className="mr-2 h-4 w-4" />
+              Añadir Primer Producto
+            </span>
           </Link>
         </Button>
       </div>
@@ -101,7 +102,6 @@ export default function ProductosInventarioTable({ productos }: ProductosInventa
             {productos.map((producto) => (
               <TableRow key={producto.id}>
                 <TableCell className="font-medium">
-                  {/* Enlaza a la página de detalle/gestión de lotes del producto */}
                   <Link href={`/dashboard/inventario/${producto.id}`} className="hover:underline text-primary">
                     {producto.nombre}
                   </Link>
@@ -112,9 +112,9 @@ export default function ProductosInventarioTable({ productos }: ProductosInventa
                   <Badge variant={
                     producto.stock_total_actual <= (producto.stock_minimo || 0) 
                       ? "destructive" 
-                      : producto.stock_total_actual <= (producto.stock_minimo || 0) * 1.2 // Umbral para "advertencia"
-                        ? "secondary" // Usamos secondary, o puedes crear una variante 'warning'
-                        : "default"   // O 'success' si la tienes
+                      : producto.stock_total_actual <= (producto.stock_minimo || 0) * 1.2 
+                        ? "secondary" 
+                        : "default"
                   }>
                     {producto.stock_total_actual}
                   </Badge>
@@ -130,19 +130,22 @@ export default function ProductosInventarioTable({ productos }: ProductosInventa
                     : '-'}
                 </TableCell>
                 <TableCell className="text-right space-x-1">
-                  <Button asChild variant="ghost" size="icon-sm" title="Gestionar Lotes/Detalles">
+                  {/* Botón "Ver/Gestionar Lotes" */}
+                  <Button asChild variant="ghost" size="icon" title="Gestionar Lotes/Detalles">
                     <Link href={`/dashboard/inventario/${producto.id}`}>
                       <EyeIcon className="h-4 w-4" />
                     </Link>
                   </Button>
-                  <Button asChild variant="ghost" size="icon-sm" title="Editar Producto (Catálogo)">
+                  {/* Botón "Editar Catálogo" */}
+                  <Button asChild variant="ghost" size="icon" title="Editar Producto (Catálogo)">
                     <Link href={`/dashboard/inventario/${producto.id}/editar`}>
                       <Edit3Icon className="h-4 w-4" />
                     </Link>
                   </Button>
+                  {/* Botón "Eliminar Catálogo" */}
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
-                      <Button variant="ghost" size="icon-sm" className="text-destructive hover:text-destructive" title="Eliminar Producto" disabled={isDeleting}>
+                      <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" title="Eliminar Producto del Catálogo" disabled={isDeleting}>
                         <Trash2Icon className="h-4 w-4" />
                       </Button>
                     </AlertDialogTrigger>
