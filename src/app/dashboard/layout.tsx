@@ -50,7 +50,7 @@ export default function DashboardLayout({
   ];
   
   const settingsNavItems: NavItem[] = [
-    { href: "/dashboard/configuracion", label: "Configuración", icon: Settings, disabled: true },
+    { href: "/dashboard/configuracion", label: "Configuración", icon: Settings },
   ];
 
 
