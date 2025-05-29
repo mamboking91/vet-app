@@ -82,7 +82,9 @@ export const unidadesDeMedidaInventarioOpciones = [
     numero_lote: string;
     stock_lote: number;
     fecha_caducidad: string | null; // String ISO de la fecha
-    fecha_entrada: string; // String ISO de la fecha
+    fecha_entrada: string; 
+    esta_activo: boolean
+    // String ISO de la fecha
     // precio_compra_lote?: number | null; // Si el precio de compra es por lote
     // created_at: string;
     // updated_at: string | null;
