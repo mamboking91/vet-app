@@ -14,18 +14,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { DatePicker } from "@/components/ui/date-picker";
+import { DatePicker } from "@/components/ui/date-picker"; // Asume que tienes este componente
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { XIcon, PlusCircleIcon } from 'lucide-react';
-import { crearFacturaConItems /*, actualizarFactura */ } from '../actions'; 
+import { crearFacturaConItems, actualizarFacturaConItems } from '../actions'; // Importa ambas acciones
 import type { 
   EntidadParaSelector, 
   FacturaItemFormData, 
-  FacturaHeaderFormData, // Este tipo necesitará ajustarse si eliminamos porcentaje_impuesto_predeterminado
+  FacturaHeaderFormData,
   EstadoFacturaPagoValue,
   ImpuestoItemValue,
-  NuevaFacturaPayload,
-  ItemParaPayload
+  NuevaFacturaPayload, // Usado para el payload de ambas acciones
+  ItemParaPayload       // Usado para construir el array de items del payload
 } from '../types';
 import { estadosFacturaPagoOpciones, impuestoItemOpciones } from '../types'; 
 import { format, parseISO, isValid as isValidDate } from 'date-fns';
@@ -39,19 +39,20 @@ const formatCurrency = (amount: number | null | undefined): string => {
   return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(amount);
 };
 
+// Estructura de las props que espera el formulario
 interface FacturaFormProps {
   propietarios: EntidadParaSelector[];
   pacientes: (EntidadParaSelector & { propietario_id: string, especie?: string | null })[];
-  // Ya no pasamos porcentaje_impuesto_predeterminado como prop si se elimina del header
-  initialData?: Partial<Omit<FacturaHeaderFormData, 'porcentaje_impuesto_predeterminado'> & { items: FacturaItemFormData[] }>;
-  facturaId?: string;
+  initialData?: Partial<FacturaHeaderFormData & { items: FacturaItemFormData[] }>;
+  facturaId?: string; // ID de la factura si está en modo edición
 }
 
+// Tipo para los errores de campo específicos que Zod podría devolver
 type FieldErrors = {
-  [key in keyof Omit<FacturaHeaderFormData, 'porcentaje_impuesto_predeterminado'>]?: string[] | undefined;
+  [key in keyof FacturaHeaderFormData]?: string[] | undefined;
 } & {
-  items?: ({ [key in keyof Omit<FacturaItemFormData, 'id_temporal'>]?: string[] | undefined; } | string)[];
-  general?: string;
+  items?: ({ [key in keyof ItemParaPayload]?: string[] | undefined; } | string)[]; // Errores para ítems
+  general?: string; // Errores generales del formulario
 };
 
 const DEFAULT_ITEM_TAX_RATE: ImpuestoItemValue = "7"; // IGIC General Canario 7% por defecto para nuevos ítems
@@ -69,9 +70,11 @@ export default function FacturaForm({
 
   const isEditMode = Boolean(facturaId && initialData);
 
+  // --- ESTADO PARA LA CABECERA DE LA FACTURA ---
   const [numeroFactura, setNumeroFactura] = useState(initialData?.numero_factura || '');
   const [propietarioId, setPropietarioId] = useState(initialData?.propietario_id || '');
   const [pacienteId, setPacienteId] = useState(initialData?.paciente_id || '');
+  
   const [fechaEmision, setFechaEmision] = useState<Date | undefined>(() => 
     initialData?.fecha_emision && isValidDate(parseISO(initialData.fecha_emision)) 
       ? parseISO(initialData.fecha_emision) 
@@ -83,13 +86,17 @@ export default function FacturaForm({
       : undefined
   );
   const [estadoFactura, setEstadoFactura] = useState<EstadoFacturaPagoValue>(initialData?.estado || 'Borrador');
-  // Eliminamos porcentajeImpuestoPredeterminado del estado de la cabecera
   const [notasCliente, setNotasCliente] = useState(initialData?.notas_cliente || '');
   const [notasInternas, setNotasInternas] = useState(initialData?.notas_internas || '');
 
+  // --- ESTADO PARA LOS ÍTEMS DE LA FACTURA ---
   const [items, setItems] = useState<FacturaItemFormData[]>(
     initialData?.items && initialData.items.length > 0
-      ? initialData.items 
+      ? initialData.items.map(item => ({ // Asegurar id_temporal y el tipo correcto para porcentaje_impuesto_item
+          ...item,
+          id_temporal: item.id_temporal || crypto.randomUUID(),
+          porcentaje_impuesto_item: (item.porcentaje_impuesto_item as ImpuestoItemValue | string) || DEFAULT_ITEM_TAX_RATE
+        }))
       : [{ 
           id_temporal: crypto.randomUUID(), 
           descripcion: '', 
@@ -101,23 +108,27 @@ export default function FacturaForm({
 
   const [pacientesFiltrados, setPacientesFiltrados] = useState<(EntidadParaSelector & { propietario_id: string, especie?: string | null })[]>([]);
 
+  // Efecto para filtrar pacientes cuando cambia el propietarioId
   useEffect(() => {
     if (propietarioId) {
       const filtered = todosLosPacientes.filter(p => p.propietario_id === propietarioId);
       setPacientesFiltrados(filtered);
+      // Si el paciente seleccionado actualmente no pertenece al nuevo propietario, y no estamos
+      // inicializando el modo edición con un paciente que SÍ pertenece, lo deseleccionamos.
       if (!isEditMode || (initialData && propietarioId !== initialData.propietario_id)) {
-         if (!filtered.find(p => p.id === pacienteId)) {
-             setPacienteId('');
-         }
+        if (!filtered.find(p => p.id === pacienteId)) {
+            setPacienteId('');
+        }
       }
     } else {
       setPacientesFiltrados([]);
-       if (!isEditMode) {
+      if (!isEditMode) {
          setPacienteId('');
-       }
+      }
     }
   }, [propietarioId, todosLosPacientes, isEditMode, initialData, pacienteId]);
   
+  // Efecto para pre-rellenar el formulario en modo edición
   useEffect(() => {
     if (isEditMode && initialData) {
       setNumeroFactura(initialData.numero_factura || '');
@@ -126,14 +137,13 @@ export default function FacturaForm({
       setFechaEmision(initialData.fecha_emision && isValidDate(parseISO(initialData.fecha_emision)) ? parseISO(initialData.fecha_emision) : new Date());
       setFechaVencimiento(initialData.fecha_vencimiento && isValidDate(parseISO(initialData.fecha_vencimiento)) ? parseISO(initialData.fecha_vencimiento) : undefined);
       setEstadoFactura(initialData.estado || 'Borrador');
-      // Ya no inicializamos porcentajeImpuestoPredeterminado aquí
       setNotasCliente(initialData.notas_cliente || '');
       setNotasInternas(initialData.notas_internas || '');
       setItems(
         initialData.items && initialData.items.length > 0
         ? initialData.items.map(item => ({
             ...item, 
-            id_temporal: item.id_temporal || crypto.randomUUID(),
+            id_temporal: item.id_temporal || crypto.randomUUID(), // Asegurar que cada item tenga un id_temporal
             porcentaje_impuesto_item: item.porcentaje_impuesto_item || DEFAULT_ITEM_TAX_RATE 
           }))
         : [{ 
@@ -160,7 +170,7 @@ export default function FacturaForm({
       descripcion: '', 
       cantidad: '1', 
       precio_unitario: '0',
-      porcentaje_impuesto_item: DEFAULT_ITEM_TAX_RATE // Usar el default para nuevos ítems
+      porcentaje_impuesto_item: DEFAULT_ITEM_TAX_RATE 
     }]);
   };
 
@@ -172,7 +182,6 @@ export default function FacturaForm({
     const cantidad = parseFloat(item.cantidad) || 0;
     const precioUnitario = parseFloat(item.precio_unitario) || 0;
     const porcentajeImpuestoItem = parseFloat(item.porcentaje_impuesto_item) || 0;
-
     const baseImponibleItem = cantidad * precioUnitario;
     const montoImpuestoItem = baseImponibleItem * (porcentajeImpuestoItem / 100);
     const totalItem = baseImponibleItem + montoImpuestoItem;
@@ -183,51 +192,46 @@ export default function FacturaForm({
   const montoTotalImpuestos = itemsCalculados.reduce((sum, item) => sum + item.montoImpuestoItem, 0);
   const totalFactura = subtotalGeneralFactura + montoTotalImpuestos;
 
-  // Calcular desglose de impuestos para el resumen
   const desgloseImpuestosUI: { [rate: string]: { base: number; impuesto: number } } = {};
   itemsCalculados.forEach(item => {
-    const tasaKey = `${item.porcentajeImpuestoItem}%`; // Usamos el % del ítem
-    if (!desgloseImpuestosUI[tasaKey]) {
-      desgloseImpuestosUI[tasaKey] = { base: 0, impuesto: 0 };
-    }
+    const tasaKey = `${item.porcentajeImpuestoItem}%`;
+    if (!desgloseImpuestosUI[tasaKey]) desgloseImpuestosUI[tasaKey] = { base: 0, impuesto: 0 };
     desgloseImpuestosUI[tasaKey].base += item.baseImponibleItem;
     desgloseImpuestosUI[tasaKey].impuesto += item.montoImpuestoItem;
   });
-  // Filtrar tasas con base 0 para no mostrarlas si no aplican
   const tasasRelevantes = Object.keys(desgloseImpuestosUI).filter(tasa => desgloseImpuestosUI[tasa].base > 0 || desgloseImpuestosUI[tasa].impuesto > 0);
-
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setFormError(null);
     setFieldErrors(null);
 
+    // Construimos el payload que espera la Server Action (tipo NuevaFacturaPayload)
     const payloadItems: ItemParaPayload[] = items.map(item => ({
         descripcion: item.descripcion,
         cantidad: item.cantidad, 
         precio_unitario: item.precio_unitario,
-        porcentaje_impuesto_item: item.porcentaje_impuesto_item,
+        porcentaje_impuesto_item: item.porcentaje_impuesto_item, // Se envía como string
     }));
 
-    const payload: Omit<NuevaFacturaPayload, 'porcentaje_impuesto_header_info'> = { // Ajustado
+    const payload: NuevaFacturaPayload = {
       numero_factura: numeroFactura,
       propietario_id: propietarioId,
-      paciente_id: pacienteId || undefined,
-      fecha_emision: fechaEmision ? format(fechaEmision, 'yyyy-MM-dd') : '',
+      paciente_id: pacienteId || undefined, // Enviar undefined si está vacío
+      fecha_emision: fechaEmision ? format(fechaEmision, 'yyyy-MM-dd') : '', // Zod validará si está vacío
       fecha_vencimiento: fechaVencimiento ? format(fechaVencimiento, 'yyyy-MM-dd') : undefined,
       estado: estadoFactura,
-      notas_cliente: notasCliente,
-      notas_internas: notasInternas,
+      notas_cliente: notasCliente || undefined,
+      notas_internas: notasInternas || undefined,
       items: payloadItems,
     };
     
     startTransition(async () => {
       let result;
       if (isEditMode && facturaId) {
-        setFormError("La funcionalidad de editar factura aún no está implementada para impuestos por ítem."); return;
-        // result = await actualizarFactura(facturaId, payload as any); 
+        result = await actualizarFacturaConItems(facturaId, payload); 
       } else {
-        result = await crearFacturaConItems(payload as any); 
+        result = await crearFacturaConItems(payload); 
       }
       
       if (!result.success) {
@@ -236,7 +240,7 @@ export default function FacturaForm({
           setFieldErrors(result.error.errors as FieldErrors); 
         }
       } else {
-        router.push('/dashboard/facturacion');
+        router.push(isEditMode ? `/dashboard/facturacion/${facturaId}` : '/dashboard/facturacion'); 
         router.refresh(); 
       }
     });
@@ -247,22 +251,21 @@ export default function FacturaForm({
       <Card>
         <CardHeader><CardTitle>Datos de la Factura</CardTitle></CardHeader>
         <CardContent className="space-y-4">
-          {/* Campos de cabecera: Numero, Fechas, Propietario, Paciente, Estado */}
-          {/* SE ELIMINÓ EL INPUT DE "IGIC Predeterminado para Nuevos Ítems (%)" */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <Label htmlFor="numero_factura" className="mb-1.5 block">Número de Factura</Label>
-              <Input id="numero_factura" name="numero_factura" value={numeroFactura} onChange={(e) => setNumeroFactura(e.target.value)} required />
+              <Label htmlFor="numero_factura">Número de Factura</Label>
+              <Input id="numero_factura" name="numero_factura_display" value={numeroFactura} onChange={(e) => setNumeroFactura(e.target.value)} required />
               {fieldErrors?.numero_factura && <p className="text-sm text-red-500 mt-1">{fieldErrors.numero_factura[0]}</p>}
             </div>
             <div>
-              <Label htmlFor="fecha_emision" className="mb-1.5 block">Fecha de Emisión</Label>
+              <Label htmlFor="fecha_emision">Fecha de Emisión</Label>
               <DatePicker date={fechaEmision} onDateChange={setFechaEmision} />
+              {/* El 'name' aquí es opcional si construyes el payload desde el estado */}
               <input type="hidden" name="fecha_emision" value={fechaEmision ? format(fechaEmision, 'yyyy-MM-dd') : ''} />
               {fieldErrors?.fecha_emision && <p className="text-sm text-red-500 mt-1">{fieldErrors.fecha_emision[0]}</p>}
             </div>
             <div>
-              <Label htmlFor="fecha_vencimiento" className="mb-1.5 block">Fecha de Vencimiento (opc)</Label>
+              <Label htmlFor="fecha_vencimiento">Fecha de Vencimiento (opc)</Label>
               <DatePicker date={fechaVencimiento} onDateChange={setFechaVencimiento} />
               <input type="hidden" name="fecha_vencimiento" value={fechaVencimiento ? format(fechaVencimiento, 'yyyy-MM-dd') : ''} />
               {fieldErrors?.fecha_vencimiento && <p className="text-sm text-red-500 mt-1">{fieldErrors.fecha_vencimiento[0]}</p>}
@@ -270,7 +273,7 @@ export default function FacturaForm({
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <Label htmlFor="propietario_id_form" className="mb-1.5 block">Propietario</Label>
+              <Label htmlFor="propietario_id_form">Propietario</Label>
               <Select name="propietario_id" required value={propietarioId} onValueChange={setPropietarioId}>
                 <SelectTrigger id="propietario_id_form"><SelectValue placeholder="Selecciona propietario" /></SelectTrigger>
                 <SelectContent>{propietarios.map(p => <SelectItem key={p.id} value={p.id}>{p.nombre}</SelectItem>)}</SelectContent>
@@ -278,14 +281,14 @@ export default function FacturaForm({
               {fieldErrors?.propietario_id && <p className="text-sm text-red-500 mt-1">{fieldErrors.propietario_id[0]}</p>}
             </div>
             <div>
-              <Label htmlFor="paciente_id_form" className="mb-1.5 block">Paciente (opcional)</Label>
+              <Label htmlFor="paciente_id_form">Paciente (opcional)</Label>
               <Select name="paciente_id" value={pacienteId} onValueChange={setPacienteId} disabled={!propietarioId || pacientesFiltrados.length === 0}>
                 <SelectTrigger id="paciente_id_form"><SelectValue placeholder="Selecciona paciente" /></SelectTrigger>
                 <SelectContent>{pacientesFiltrados.map(p => <SelectItem key={p.id} value={p.id}>{p.nombre}</SelectItem>)}</SelectContent>
               </Select>
             </div>
              <div>
-              <Label htmlFor="estado_form" className="mb-1.5 block">Estado</Label>
+              <Label htmlFor="estado_form">Estado</Label>
               <Select name="estado" required value={estadoFactura} onValueChange={(value) => setEstadoFactura(value as EstadoFacturaPagoValue)}>
                 <SelectTrigger id="estado_form"><SelectValue placeholder="Selecciona estado" /></SelectTrigger>
                 <SelectContent>{estadosFacturaPagoOpciones.map(e => <SelectItem key={e} value={e}>{e}</SelectItem>)}</SelectContent>
@@ -301,39 +304,37 @@ export default function FacturaForm({
         <CardContent>
           <div className="space-y-4">
             {itemsCalculados.map((item, index) => (
-              <div key={item.id_temporal} className="grid grid-cols-[minmax(0,3fr)_repeat(3,minmax(0,1fr))_minmax(0,1.5fr)_auto] items-end gap-2 border-b pb-4 mb-2">
-                {/* Descripción */}
+              <div key={item.id_temporal} className="grid grid-cols-[minmax(0,3fr)_80px_110px_110px_minmax(0,1.5fr)_auto] items-end gap-2 border-b pb-4 mb-2">
                 <div className="space-y-1">
                   <Label htmlFor={`item_descripcion_${index}`} className="text-xs">Descripción</Label>
-                  <Textarea id={`item_descripcion_${index}`} placeholder="Servicio o Producto" value={item.descripcion} onChange={(e) => handleItemChange(index, 'descripcion', e.target.value)} required rows={1} className="text-sm"/>
+                  <Textarea id={`item_descripcion_${index}`} name={`items[${index}].descripcion`} placeholder="Servicio o Producto" value={item.descripcion} onChange={(e) => handleItemChange(index, 'descripcion', e.target.value)} required rows={1} className="text-sm"/>
                 </div>
-                {/* Cantidad */}
                 <div className="space-y-1">
                   <Label htmlFor={`item_cantidad_${index}`} className="text-xs">Cant.</Label>
-                  <Input id={`item_cantidad_${index}`} type="number" value={item.cantidad} onChange={(e) => handleItemChange(index, 'cantidad', e.target.value)} required min="1" className="text-sm h-9 text-center"/>
+                  <Input id={`item_cantidad_${index}`} name={`items[${index}].cantidad`} type="number" value={item.cantidad} onChange={(e) => handleItemChange(index, 'cantidad', e.target.value)} required min="1" className="text-sm h-9 text-center"/>
                 </div>
-                {/* Precio Base */}
                 <div className="space-y-1">
                   <Label htmlFor={`item_precio_${index}`} className="text-xs">Precio Base (€)</Label>
-                  <Input id={`item_precio_${index}`} type="number" value={item.precio_unitario} onChange={(e) => handleItemChange(index, 'precio_unitario', e.target.value)} required step="0.01" min="0" className="text-sm h-9 text-right"/>
+                  <Input id={`item_precio_${index}`} name={`items[${index}].precio_unitario`} type="number" value={item.precio_unitario} onChange={(e) => handleItemChange(index, 'precio_unitario', e.target.value)} required step="0.01" min="0" className="text-sm h-9 text-right"/>
                 </div>
-                {/* % IGIC Item */}
                 <div className="space-y-1">
                   <Label htmlFor={`item_impuesto_${index}`} className="text-xs">IGIC (%)</Label>
-                  <Select value={item.porcentaje_impuesto_item} onValueChange={(value) => handleItemChange(index, 'porcentaje_impuesto_item', value as ImpuestoItemValue)}>
-                    <SelectTrigger className="text-sm h-9"><SelectValue /></SelectTrigger>
+                  <Select 
+                    name={`items[${index}].porcentaje_impuesto_item`} // Para que FormData lo pueda recoger si es necesario
+                    value={item.porcentaje_impuesto_item} 
+                    onValueChange={(value) => handleItemChange(index, 'porcentaje_impuesto_item', value as ImpuestoItemValue | string)}
+                  >
+                    <SelectTrigger className="text-sm h-9"><SelectValue placeholder="IGIC" /></SelectTrigger>
                     <SelectContent>
                         {impuestoItemOpciones.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
-                {/* Resumen del ítem */}
                 <div className="text-right text-xs space-y-0.5 pt-1 self-center">
                   <p>Base: {formatCurrency(item.baseImponibleItem)}</p>
                   <p>IGIC: {formatCurrency(item.montoImpuestoItem)}</p>
                   <p className="font-semibold">Total: {formatCurrency(item.totalItem)}</p>
                 </div>
-                {/* Botón Eliminar Ítem */}
                 <Button type="button" variant="ghost" size="icon" onClick={() => removeItem(item.id_temporal)} className="text-destructive self-center">
                   <XIcon className="h-4 w-4" />
                 </Button>
@@ -353,8 +354,6 @@ export default function FacturaForm({
             <span>Total Base Imponible General:</span>
             <span>{formatCurrency(subtotalGeneralFactura)}</span>
           </div>
-          
-          {/* Desglose de IGIC por tasa */}
           {tasasRelevantes.length > 0 && <p className="font-medium mt-2 mb-1">Desglose de IGIC:</p>}
           {tasasRelevantes.map((tasaKey) => (
             <div key={tasaKey} className="flex justify-between pl-4 text-xs">
@@ -362,7 +361,6 @@ export default function FacturaForm({
               <span>Monto {tasaKey}: {formatCurrency(desgloseImpuestosUI[tasaKey].impuesto)}</span>
             </div>
           ))}
-          
           <div className="flex justify-between font-semibold border-t pt-1 mt-1">
             <span>Total Impuestos (IGIC):</span>
             <span>{formatCurrency(montoTotalImpuestos)}</span>
@@ -374,24 +372,22 @@ export default function FacturaForm({
         </CardContent>
       </Card>
 
-      {/* ... (Notas y botones de acción del formulario como antes) ... */}
       <Card>
-            <CardHeader><CardTitle>Notas</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Label htmlFor="notas_cliente" className="mb-1.5 block">Notas para el Cliente</Label>
-                <Textarea id="notas_cliente" name="notas_cliente" value={notasCliente} onChange={(e) => setNotasCliente(e.target.value)} rows={3} />
-              </div>
-              <div>
-                <Label htmlFor="notas_internas" className="mb-1.5 block">Notas Internas</Label>
-                <Textarea id="notas_internas" name="notas_internas" value={notasInternas} onChange={(e) => setNotasInternas(e.target.value)} rows={3} />
-              </div>
-            </CardContent>
+        <CardHeader><CardTitle>Notas</CardTitle></CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <Label htmlFor="notas_cliente">Notas para el Cliente</Label>
+            <Textarea id="notas_cliente" name="notas_cliente" value={notasCliente} onChange={(e) => setNotasCliente(e.target.value)} rows={3} />
+          </div>
+          <div>
+            <Label htmlFor="notas_internas">Notas Internas</Label>
+            <Textarea id="notas_internas" name="notas_internas" value={notasInternas} onChange={(e) => setNotasInternas(e.target.value)} rows={3} />
+          </div>
+        </CardContent>
       </Card>
       
       {formError && <p className="text-sm text-red-600 p-3 bg-red-100 rounded-md">{formError}</p>}
       {fieldErrors?.general && <p className="text-sm text-red-600 p-3 bg-red-100 rounded-md">{fieldErrors.general[0]}</p>}
-
 
       <div className="flex gap-2 pt-4">
         <Button type="submit" disabled={isPending}>
