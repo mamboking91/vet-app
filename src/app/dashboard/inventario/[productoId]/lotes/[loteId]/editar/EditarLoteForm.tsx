@@ -49,15 +49,26 @@ export default function EditarLoteForm({ initialData, loteId, productoId }: Edit
     // Asegúrate que el input de stock_lote tiene name="stock_lote"
 
     startTransition(async () => {
-      const result = await actualizarDatosLote(loteId, productoId, formData);
-      if (!result.success) {
-        setFormError(result.error?.message || "Ocurrió un error al actualizar el lote.");
-        if (result.error?.errors) {
-          setFieldErrors(result.error.errors as FieldErrors);
-        }
-      } else {
+      try {
+        await actualizarDatosLote(loteId, productoId, formData);
+        // Si llegamos aquí sin errores, la operación fue exitosa
         router.push(`/dashboard/inventario/${productoId}`);
         router.refresh();
+      } catch (error: any) {
+        // Manejo de errores si la función lanza una excepción
+        console.error('Error al actualizar el lote:', error);
+        
+        // Verificar si el error tiene la estructura esperada
+        if (error && typeof error === 'object') {
+          if (error.message) {
+            setFormError(error.message);
+          }
+          if (error.errors) {
+            setFieldErrors(error.errors as FieldErrors);
+          }
+        } else {
+          setFormError("Ocurrió un error inesperado al actualizar el lote.");
+        }
       }
     });
   };

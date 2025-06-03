@@ -5,17 +5,8 @@ import { cookies } from 'next/headers';
 import Link from 'next/link';
 import { Button } from "@/components/ui/button";
 import ProcedimientosTable from './ProcedimientosTable';
-
-// Definición del tipo Procedimiento - ASEGÚRATE QUE notas_internas ESTÉ INCLUIDO
-export type Procedimiento = {
-  id: string;
-  nombre: string;
-  descripcion: string | null;
-  duracion_estimada_minutos: number | null;
-  precio: number;
-  categoria: string | null;
-  notas_internas: string | null; // Incluido para que el tipo sea completo
-};
+// Importamos el tipo Procedimiento desde nuestro archivo types.ts
+import type { Procedimiento } from './types'; 
 
 export const dynamic = 'force-dynamic';
 
@@ -23,11 +14,10 @@ export default async function ProcedimientosPage() {
   const cookieStore = cookies();
   const supabase = createServerComponentClient({ cookies: () => cookieStore });
 
-  // Modificamos la consulta para incluir todos los campos del tipo Procedimiento
-  // que podrían ser relevantes para la tabla o para otros usos del tipo.
+  // Modificamos la consulta para incluir el nuevo campo porcentaje_impuesto
   const { data: procedimientosData, error } = await supabase
     .from('procedimientos')
-    .select('id, nombre, descripcion, duracion_estimada_minutos, precio, categoria, notas_internas')
+    .select('id, nombre, descripcion, duracion_estimada_minutos, precio, categoria, notas_internas, porcentaje_impuesto') // <--- AÑADIDO porcentaje_impuesto
     .order('nombre', { ascending: true });
 
   if (error) {
@@ -36,17 +26,17 @@ export default async function ProcedimientosPage() {
   }
   
   // Mapeamos los datos asegurando que se ajustan al tipo Procedimiento
-  // El filtro p.id != null es una buena práctica, aunque id es una PK.
-  const procedimientosProcesados = (procedimientosData || [])
+  const procedimientosProcesados: Procedimiento[] = (procedimientosData || [])
     .filter(p => p.id != null) 
     .map(p => ({
-      id: p.id as string,
-      nombre: p.nombre as string,
+      id: p.id, // Supabase devuelve UUID como string
+      nombre: p.nombre,
       descripcion: p.descripcion,
       duracion_estimada_minutos: p.duracion_estimada_minutos,
-      precio: p.precio as number,
+      precio: p.precio, // Asumimos que ya es number
       categoria: p.categoria,
-      notas_internas: p.notas_internas, // Aseguramos que se mapea
+      notas_internas: p.notas_internas,
+      porcentaje_impuesto: p.porcentaje_impuesto, // Asumimos que ya es number
     }));
 
   return (
@@ -57,8 +47,8 @@ export default async function ProcedimientosPage() {
           <Link href="/dashboard/procedimientos/nuevo">Añadir Nuevo Procedimiento</Link>
         </Button>
       </div>
-      {/* Pasamos los datos procesados que ahora se ajustan al tipo Procedimiento (incluyendo notas_internas) */}
-      <ProcedimientosTable procedimientos={procedimientosProcesados as Procedimiento[]} />
+      {/* Pasamos los datos procesados, que ahora incluyen porcentaje_impuesto */}
+      <ProcedimientosTable procedimientos={procedimientosProcesados} />
     </div>
   );
 }

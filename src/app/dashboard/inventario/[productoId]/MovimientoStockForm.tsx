@@ -17,8 +17,8 @@ import { DialogFooter } from "@/components/ui/dialog";
 import { registrarMovimientoStock } from '../actions';
 import type { LoteDeProducto, TipoMovimientoInventarioValue, UnidadMedidaInventarioValue } from '../types';
 import { tiposDeMovimientoInventarioOpciones } from '../types';
-import { format } from 'date-fns'; // <--- IMPORTACIÓN AÑADIDA
-import { es } from 'date-fns/locale'; // <--- IMPORTACIÓN AÑADIDA
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
 
 interface MovimientoStockFormProps {
   productoId: string;
@@ -61,15 +61,22 @@ export default function MovimientoStockForm({
     }
 
     startTransition(async () => {
-      const result = await registrarMovimientoStock(productoId, lote.id, formData);
-      
-      if (!result.success) {
-        setFormError(result.error?.message || "Ocurrió un error al registrar el movimiento.");
-        if (result.error?.errors) {
-          setFieldErrors(result.error.errors as FieldErrors);
+      try {
+        await registrarMovimientoStock(productoId, lote.id, formData);
+        // Si llegamos aquí, la operación fue exitosa
+        onFormSubmit();
+      } catch (error: any) {
+        // Manejo de errores
+        if (error?.message) {
+          setFormError(error.message);
+        } else {
+          setFormError("Ocurrió un error al registrar el movimiento.");
         }
-      } else {
-        onFormSubmit(); 
+        
+        // Si el error contiene errores de validación específicos
+        if (error?.errors) {
+          setFieldErrors(error.errors as FieldErrors);
+        }
       }
     });
   };
@@ -81,7 +88,6 @@ export default function MovimientoStockForm({
         <p><strong>Lote Nº:</strong> {lote.numero_lote}</p>
         <p><strong>Stock Actual del Lote:</strong> {lote.stock_lote} {unidadProducto || ''}</p>
         {lote.fecha_caducidad && (
-            // AHORA 'format' Y 'es' ESTÁN DEFINIDOS
             <p><strong>Caducidad del Lote:</strong> {format(new Date(lote.fecha_caducidad), 'PPP', {locale: es})}</p>
         )}
       </div>

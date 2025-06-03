@@ -6,7 +6,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { ChevronLeft, PlusCircle, PackageOpen, History } from 'lucide-react';
+import { ChevronLeft, PlusCircle, PackageOpen, History, Package, Edit3, BarChart2, Euro, Tag, FileText, Layers, Activity } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 // Importamos todos los tipos necesarios desde el archivo centralizado
@@ -116,74 +116,193 @@ export default async function DetalleProductoPage({ params }: DetalleProductoPag
   }));
 
   return (
-    <div className="container mx-auto py-10 px-4 md:px-6">
-      {/* ... (Título y Botones de Acción de la Página) ... */}
-      <div className="flex items-center mb-6">
-        <Button variant="outline" size="icon" asChild className="mr-4">
-          <Link href="/dashboard/inventario">
-            <ChevronLeft className="h-4 w-4" />
-          </Link>
-        </Button>
-        <h1 className="text-2xl md:text-3xl font-bold truncate" title={producto.nombre}>
-          Detalle Producto: {producto.nombre}
-        </h1>
-        <Button asChild className="ml-auto">
-          <Link href={`/dashboard/inventario/${productoId}/editar`}>
-            Editar Catálogo
-          </Link>
-        </Button>
-      </div>
-
-      {/* Tarjeta de Información General del Producto */}
-      <Card className="mb-8">
-        {/* ... (contenido como antes) ... */}
-        <CardHeader>
-            <CardTitle>Información del Catálogo</CardTitle>
-            <CardDescription>{producto.codigo_producto || 'Sin código'}</CardDescription>
-        </CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4 text-sm">
-            <div><strong>Descripción:</strong> {producto.descripcion || 'N/A'}</div>
-            <div><strong>Unidad:</strong> {producto.unidad || 'N/A'}</div>
-            <div><strong>Precio Venta:</strong> {producto.precio_venta ? `${Number(producto.precio_venta).toFixed(2)} €` : 'N/A'}</div>
-            <div><strong>Stock Mínimo:</strong> {producto.stock_minimo ?? 'N/A'}</div>
-            <div><strong>Requiere Lote:</strong> {producto.requiere_lote ? 'Sí' : 'No'}</div>
-            <div><strong>Stock Total Activo:</strong> {stockTotalActivo}</div>
-            {producto.notas_internas && <div className="md:col-span-full"><strong>Notas Internas:</strong> {producto.notas_internas}</div>}
-        </CardContent>
-      </Card>
-
-      {/* Sección de Lotes */}
-      {producto.requiere_lote && (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 p-4">
+      <div className="max-w-7xl mx-auto">
+        {/* Header con navegación */}
         <div className="mb-8">
-          {/* ... (título y botón para añadir lote) ... */}
-           <div className="mb-6 flex justify-between items-center">
-            <h2 className="text-xl md:text-2xl font-semibold">Lotes del Producto</h2>
-            <Button asChild>
-              <Link href={`/dashboard/inventario/${productoId}/lotes/nuevo`}> 
-                <PlusCircle className="mr-2 h-4 w-4" /> Registrar Entrada de Lote
+          <div className="flex items-center gap-4 mb-4">
+            <Button
+              variant="ghost"
+              size="icon"
+              asChild
+              className="text-gray-600 hover:text-gray-900 hover:bg-white/50 transition-all duration-200 rounded-lg"
+            >
+              <Link href="/dashboard/inventario">
+                <ChevronLeft className="h-5 w-5" />
+              </Link>
+            </Button>
+            <div className="p-3 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-xl shadow-lg">
+              <Package className="h-8 w-8 text-white" />
+            </div>
+            <div className="flex-1">
+              <h1 className="text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">
+                {producto.nombre}
+              </h1>
+              <p className="text-gray-600 mt-1">Detalle del producto en inventario</p>
+            </div>
+            <Button
+              asChild
+              className="bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white shadow-lg hover:shadow-xl transition-all duration-200"
+            >
+              <Link href={`/dashboard/inventario/${productoId}/editar`}>
+                <Edit3 className="mr-2 h-4 w-4" />
+                Editar Catálogo
               </Link>
             </Button>
           </div>
-          {lotesError && <p className="text-red-500">Error al cargar los lotes: {lotesError.message}</p>}
-          <LotesProductoTabla 
-            lotes={lotes} 
-            productoId={producto.id} 
-            nombreProducto={producto.nombre}
-            unidadProducto={producto.unidad}
-          />
         </div>
-      )}
 
-      {/* Sección de Movimientos de Inventario */}
-      <div className="mt-8">
-        <div className="mb-6 flex justify-between items-center">
-          <h2 className="text-xl md:text-2xl font-semibold">
-            <History className="inline-block h-6 w-6 mr-2 align-text-bottom" />
-            Historial de Movimientos de Stock
-          </h2>
-        </div>
-        {movimientosError && <p className="text-red-500">Error al cargar los movimientos: {movimientosError.message}</p>}
-        <MovimientosInventarioTable movimientos={movimientos} /> {/* Pasamos los movimientos transformados */}
+        {/* Tarjeta de Información General del Producto */}
+        <Card className="mb-8 shadow-lg border-0 bg-white/90 backdrop-blur-sm">
+          <CardHeader className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-t-lg py-4">
+            <CardTitle className="flex items-center gap-2 text-lg font-semibold">
+              <Package className="h-5 w-5" />
+              Información del Catálogo
+            </CardTitle>
+            <CardDescription className="text-blue-100">
+              {producto.codigo_producto || 'Sin código asignado'}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="p-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-sm font-medium text-gray-600">
+                  <FileText className="h-4 w-4 text-green-600" />
+                  Descripción
+                </div>
+                <p className="text-gray-900">{producto.descripcion || 'Sin descripción'}</p>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-sm font-medium text-gray-600">
+                  <Tag className="h-4 w-4 text-purple-600" />
+                  Unidad de Medida
+                </div>
+                <p className="text-gray-900">{producto.unidad || 'No especificada'}</p>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-sm font-medium text-gray-600">
+                  <Euro className="h-4 w-4 text-green-600" />
+                  Precio de Venta
+                </div>
+                <p className="text-gray-900 font-semibold">
+                  {producto.precio_venta ? `${Number(producto.precio_venta).toFixed(2)} €` : 'No definido'}
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-sm font-medium text-gray-600">
+                  <BarChart2 className="h-4 w-4 text-red-600" />
+                  Stock Mínimo
+                </div>
+                <p className="text-gray-900">{producto.stock_minimo ?? 'No definido'}</p>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-sm font-medium text-gray-600">
+                  <Layers className="h-4 w-4 text-amber-600" />
+                  Gestión por Lotes
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className={`w-2 h-2 rounded-full ${producto.requiere_lote ? 'bg-green-500' : 'bg-gray-400'}`}></div>
+                  <p className="text-gray-900">{producto.requiere_lote ? 'Sí' : 'No'}</p>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-sm font-medium text-gray-600">
+                  <BarChart2 className="h-4 w-4 text-blue-600" />
+                  Stock Total Activo
+                </div>
+                <div className="flex items-center gap-2">
+                  <p className="text-2xl font-bold text-blue-700">{stockTotalActivo}</p>
+                  <span className="text-sm text-gray-500">({producto.unidad || 'u'})</span>
+                </div>
+              </div>
+
+              {producto.notas_internas && (
+                <div className="md:col-span-full space-y-2">
+                  <div className="flex items-center gap-2 text-sm font-medium text-gray-600">
+                    <FileText className="h-4 w-4 text-amber-600" />
+                    Notas Internas
+                  </div>
+                  <div className="bg-amber-50 p-3 rounded-lg border border-amber-200">
+                    <p className="text-gray-900">{producto.notas_internas}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Sección de Lotes */}
+        {producto.requiere_lote && (
+          <div className="mb-8">
+            <Card className="shadow-lg border-0 bg-white/90 backdrop-blur-sm">
+              <CardHeader className="bg-gradient-to-r from-purple-500 to-pink-600 text-white rounded-t-lg py-4">
+                <div className="flex justify-between items-center">
+                  <CardTitle className="flex items-center gap-2 text-lg font-semibold">
+                    <Layers className="h-5 w-5" />
+                    Lotes del Producto
+                  </CardTitle>
+                  <Button
+                    asChild
+                    className="bg-white/20 hover:bg-white/30 text-white border-white/30 hover:border-white/50 transition-all duration-200"
+                    variant="outline"
+                  >
+                    <Link href={`/dashboard/inventario/${productoId}/lotes/nuevo`}>
+                      <PlusCircle className="mr-2 h-4 w-4" />
+                      Registrar Entrada de Lote
+                    </Link>
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="p-6">
+                {lotesError && (
+                  <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
+                    <PackageOpen className="h-5 w-5 text-red-500 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <h4 className="text-red-800 font-medium">Error al cargar los lotes</h4>
+                      <p className="text-red-700 text-sm mt-1">{lotesError.message}</p>
+                    </div>
+                  </div>
+                )}
+                <LotesProductoTabla 
+                  lotes={lotes} 
+                  productoId={producto.id} 
+                  nombreProducto={producto.nombre}
+                  unidadProducto={producto.unidad}
+                />
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Sección de Movimientos de Inventario */}
+        <Card className="shadow-lg border-0 bg-white/90 backdrop-blur-sm">
+          <CardHeader className="bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-t-lg py-4">
+            <CardTitle className="flex items-center gap-2 text-lg font-semibold">
+              <History className="h-5 w-5" />
+              Historial de Movimientos de Stock
+            </CardTitle>
+            <CardDescription className="text-emerald-100">
+              Registro completo de entradas, salidas y ajustes de inventario
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="p-6">
+            {movimientosError && (
+              <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
+                <Activity className="h-5 w-5 text-red-500 mt-0.5 flex-shrink-0" />
+                <div>
+                  <h4 className="text-red-800 font-medium">Error al cargar los movimientos</h4>
+                  <p className="text-red-700 text-sm mt-1">{movimientosError.message}</p>
+                </div>
+              </div>
+            )}
+            <MovimientosInventarioTable movimientos={movimientos} />
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

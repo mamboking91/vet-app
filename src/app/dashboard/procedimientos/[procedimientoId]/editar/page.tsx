@@ -1,4 +1,4 @@
-// app/dashboard/procedimientos/[procedimientoId]/editar/page.tsx
+// app/dashboard/procedimientos/[productoId]/editar/page.tsx
 import React from 'react';
 import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
@@ -7,8 +7,12 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { ChevronLeft } from 'lucide-react';
 import ProcedimientoForm from '../../nuevo/ProcedimientoForm'; 
-// Importamos el tipo Procedimiento desde la página de listado, donde está la definición "maestra".
-import type { Procedimiento as ProcedimientoType } from '../../page'; 
+// Importamos los tipos desde el archivo centralizado de tipos de procedimientos
+import type { 
+  Procedimiento as ProcedimientoDB, // Tipo para datos de la BD
+  ProcedimientoFormData,             // Tipo para el initialData del formulario
+  ImpuestoItemValue                  // Tipo para los valores de impuesto
+} from '../../types';                   // Asume que types.ts está en app/dashboard/procedimientos/types.ts
 
 interface EditarProcedimientoPageProps {
   params: {
@@ -23,33 +27,33 @@ export default async function EditarProcedimientoPage({ params }: EditarProcedim
   const supabase = createServerComponentClient({ cookies: () => cookieStore });
   const { procedimientoId } = params;
 
-  if (!procedimientoId || procedimientoId === 'undefined') {
+  if (!procedimientoId || procedimientoId === 'undefined' || procedimientoId.length !== 36) { // Simple validación de UUID
     console.error("[EditarProcedimientoPage] procedimientoId es inválido o 'undefined' en params.");
     notFound();
   }
 
-  // La consulta ya seleccionaba 'notas_internas'.
-  // Usamos ProcedimientoType para tipar la respuesta de Supabase.
+  // Obtenemos el procedimiento, incluyendo el nuevo campo 'porcentaje_impuesto'
   const { data: procedimiento, error } = await supabase
     .from('procedimientos')
-    .select('id, nombre, descripcion, duracion_estimada_minutos, precio, categoria, notas_internas')
+    .select('id, nombre, descripcion, duracion_estimada_minutos, precio, categoria, notas_internas, porcentaje_impuesto') // <--- AÑADIDO porcentaje_impuesto
     .eq('id', procedimientoId)
-    .single<ProcedimientoType>(); // Tipamos la respuesta con el tipo importado
+    .single<ProcedimientoDB>(); // Tipamos la respuesta con el tipo de la BD
 
   if (error || !procedimiento) {
     console.error(`[EditarProcedimientoPage] Error fetching procedimiento con ID ${procedimientoId} o no encontrado:`, error);
     notFound();
   }
   
-  // Preparamos los datos para el formulario.
-  // El tipo `ProcedimientoFormData` dentro de ProcedimientoForm espera strings.
-  const initialDataForForm = {
+  // Preparamos los datos iniciales para el ProcedimientoForm
+  // Los campos del formulario (definidos en ProcedimientoFormData) esperan strings para inputs numéricos/selects.
+  const initialDataForForm: Partial<ProcedimientoFormData> = {
     nombre: procedimiento.nombre || '', 
     descripcion: procedimiento.descripcion || '',
     duracion_estimada_minutos: procedimiento.duracion_estimada_minutos?.toString() || '',
-    precio: procedimiento.precio?.toString() || '', 
+    precio: procedimiento.precio?.toString() || '0', // Precio base
     categoria: procedimiento.categoria || '',
-    notas_internas: procedimiento.notas_internas || '', // Ahora no debería dar error de tipo
+    porcentaje_impuesto: procedimiento.porcentaje_impuesto?.toString() as ImpuestoItemValue || "0", // <--- AÑADIDO Y FORMATEADO
+    notas_internas: procedimiento.notas_internas || '',
   };
 
   return (
@@ -63,8 +67,7 @@ export default async function EditarProcedimientoPage({ params }: EditarProcedim
         <h1 className="text-2xl md:text-3xl font-bold">Editar Procedimiento: {procedimiento.nombre}</h1>
       </div>
       <ProcedimientoForm 
-        initialData={initialDataForForm} // Ya no necesita 'as ProcedimientoType' aquí, 
-                                        // initialDataForForm ya está preparado para el form.
+        initialData={initialDataForForm}
         procedimientoId={procedimiento.id}
       />
     </div>

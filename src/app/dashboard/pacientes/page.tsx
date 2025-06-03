@@ -5,94 +5,126 @@ import { cookies } from 'next/headers';
 import Link from 'next/link';
 import { Button } from "@/components/ui/button";
 import PacientesTable from './PacientesTable'; 
-import type { PacienteConPropietario } from './types'; // Importa desde tu archivo de tipos
-import { AlertTriangle } from 'lucide-react'; // Para un mensaje si el propietario del filtro no se encuentra
+// Importa los tipos desde tu archivo types.ts
+import type { PacienteConPropietario, PropietarioSimpleInfo } from './types'; 
+import { AlertTriangle } from 'lucide-react';
+// Asegúrate que la ruta a SearchInput sea correcta
+import SearchInput from '../../../components/ui/SearchInput'; 
 
-export const dynamic = 'force-dynamic';
-
-// Definimos las props que puede recibir la página, incluyendo searchParams
 interface PacientesPageProps {
-  // params es un objeto vacío para esta ruta específica, pero Next.js lo pasa
-  params: {}; 
   searchParams?: {
-    propietarioId?: string; // El ID del propietario por el que queremos filtrar
-    // otros searchParams si los hubiera
+    propietarioId?: string;
+    q?: string; // Para el término de búsqueda de pacientes
   };
 }
+
+export const dynamic = 'force-dynamic';
 
 export default async function PacientesPage({ searchParams }: PacientesPageProps) {
   const cookieStore = cookies();
   const supabase = createServerComponentClient({ cookies: () => cookieStore });
 
   const propietarioIdFilter = searchParams?.propietarioId;
+  const searchQuery = searchParams?.q?.trim();
   let nombrePropietarioFiltrado: string | null = null;
-  let filtroActivo = false;
+  let filtroPropietarioActivo = !!propietarioIdFilter;
 
-  // Construimos la consulta base
+  // Definimos la cadena de selección base para reutilizarla
+  const selectString = `
+    id,
+    nombre,
+    especie,
+    raza,
+    fecha_nacimiento,
+    sexo,
+    propietarios (id, nombre_completo)
+  `;
+
   let queryPacientes = supabase
     .from('pacientes')
-    .select(`
-      id,
-      nombre,
-      especie,
-      raza,
-      fecha_nacimiento,
-      propietarios (id, nombre_completo) 
-    `)
+    .select(selectString)
     .order('nombre', { ascending: true });
 
-  // Si hay un propietarioId en los searchParams, filtramos por él
   if (propietarioIdFilter) {
-    filtroActivo = true;
+    filtroPropietarioActivo = true; // Marcar que el filtro por propietario está activo
     queryPacientes = queryPacientes.eq('propietario_id', propietarioIdFilter);
 
-    // Opcional: Obtener el nombre del propietario para mostrar un título más descriptivo
     const { data: propietarioInfo, error: propietarioInfoError } = await supabase
       .from('propietarios')
       .select('nombre_completo')
       .eq('id', propietarioIdFilter)
       .single();
 
-    if (propietarioInfoError) {
-      console.error("Error fetching propietario for filter title:", propietarioInfoError);
-      // No es un error crítico, simplemente no mostraremos el nombre
-    }
-    if (propietarioInfo) {
+    if (propietarioInfoError && !propietarioInfo) {
+      console.warn(`Propietario con ID ${propietarioIdFilter} no encontrado. Mostrando todos los pacientes si no hay búsqueda por nombre.`);
+      // Si el propietario no existe, y no hay búsqueda por nombre, mostramos todos.
+      // Si hay búsqueda por nombre, el filtro de nombre se aplicará a todos.
+      if (!searchQuery) {
+         queryPacientes = supabase.from('pacientes').select(selectString).order('nombre', { ascending: true });
+         filtroPropietarioActivo = false; // Ya no estamos filtrando por un propietario específico
+      }
+    } else if (propietarioInfo) {
       nombrePropietarioFiltrado = propietarioInfo.nombre_completo;
-    } else if (!propietarioInfoError) {
-      // El ID del propietario en la URL no existe, podríamos mostrar un aviso
-      console.warn(`Propietario con ID ${propietarioIdFilter} no encontrado para el filtro.`);
-      // Los pacientes no se mostrarán debido al .eq() si el ID no es válido.
     }
+  }
+
+  if (searchQuery) {
+    queryPacientes = queryPacientes.ilike('nombre', `%${searchQuery}%`);
   }
 
   const { data: pacientesData, error } = await queryPacientes;
 
   if (error) {
     console.error('Error fetching pacientes:', error);
-    return <p className="text-red-500">Error al cargar los pacientes: {error.message}. Por favor, revisa la consola del servidor.</p>;
+    return <p className="text-red-500">Error al cargar los pacientes: {error.message}.</p>;
   }
   
-  const pacientes = (pacientesData || []) as PacienteConPropietario[];
+  // Mapeamos los datos para transformar 'propietarios' de array a objeto
+  // y asegurar que todos los campos de PacienteConPropietario estén presentes.
+  const pacientesProcesados: PacienteConPropietario[] = (pacientesData || []).map(p_raw => {
+    let propietarioObjeto: PropietarioSimpleInfo | null = null;
+    // Supabase devuelve la relación 'propietarios' como un objeto si es "a uno"
+    // o como un array si la consulta podría devolver múltiples (aunque aquí esperamos uno).
+    // El error de TypeScript sugiere que lo ve como un array.
+    if (p_raw.propietarios) {
+      if (Array.isArray(p_raw.propietarios) && p_raw.propietarios.length > 0) {
+        propietarioObjeto = p_raw.propietarios[0] as PropietarioSimpleInfo;
+      } else if (!Array.isArray(p_raw.propietarios)) {
+        // Si no es un array, es el objeto directamente (comportamiento esperado para relación a uno)
+        propietarioObjeto = p_raw.propietarios as PropietarioSimpleInfo;
+      }
+    }
+    return {
+      id: p_raw.id,
+      nombre: p_raw.nombre,
+      especie: p_raw.especie,
+      raza: p_raw.raza,
+      fecha_nacimiento: p_raw.fecha_nacimiento,
+      sexo: p_raw.sexo, // Incluimos el sexo
+      propietarios: propietarioObjeto,
+    };
+  });
 
   const pageTitle = nombrePropietarioFiltrado 
     ? `Pacientes de ${nombrePropietarioFiltrado}` 
-    : "Gestión de Pacientes";
+    : searchQuery 
+      ? `Resultados de búsqueda para "${searchQuery}"`
+      : "Gestión de Pacientes";
 
   return (
     <div className="container mx-auto py-10 px-4 md:px-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
         <div>
           <h1 className="text-2xl md:text-3xl font-bold">{pageTitle}</h1>
-          {filtroActivo && (
+          {(filtroPropietarioActivo || searchQuery) && (
             <div className="mt-1">
-              {!nombrePropietarioFiltrado && propietarioIdFilter && (
+              {filtroPropietarioActivo && !nombrePropietarioFiltrado && propietarioIdFilter && (
                  <p className="text-sm text-orange-600 flex items-center">
-                    <AlertTriangle className="h-4 w-4 mr-1" /> El propietario del filtro no fue encontrado.
+                    <AlertTriangle className="h-4 w-4 mr-1" /> El propietario del filtro (ID: {propietarioIdFilter.substring(0,8)}...) no fue encontrado.
                  </p>
               )}
-              <Link href="/dashboard/pacientes" className="text-sm text-blue-600 hover:underline">
-                (Mostrar todos los pacientes)
+              <Link href="/dashboard/pacientes" className="text-sm text-primary hover:underline">
+                (Mostrar todos los pacientes / Limpiar filtros)
               </Link>
             </div>
           )}
@@ -101,7 +133,21 @@ export default async function PacientesPage({ searchParams }: PacientesPageProps
           <Link href="/dashboard/pacientes/nuevo">Añadir Nuevo Paciente</Link>
         </Button>
       </div>
-      <PacientesTable pacientes={pacientes} />
+
+      <SearchInput 
+        placeholder="Buscar paciente por nombre..." 
+        initialQuery={searchQuery || ''}
+        queryParamName="q"
+      />
+      
+      {searchQuery && pacientesProcesados.length === 0 && !filtroPropietarioActivo && (
+        <p className="text-muted-foreground mt-4 mb-4 text-center">
+          No se encontraron pacientes que coincidan con &quot;{searchQuery}&quot;.
+        </p>
+      )}
+      
+      {/* Pasamos los pacientes procesados a la tabla */}
+      <PacientesTable pacientes={pacientesProcesados} />
     </div>
   );
 }

@@ -49,18 +49,27 @@ export default function EntradaLoteForm({ productoId }: EntradaLoteFormProps) {
     // productoId se pasa como argumento a la Server Action, no necesita estar en FormData aquí.
 
     startTransition(async () => {
-      const result = await registrarEntradaLote(productoId, formData);
-
-      if (!result.success) {
-        setFormError(result.error?.message || "Ocurrió un error al registrar el lote.");
-        if (result.error?.errors) {
-          setFieldErrors(result.error.errors as FieldErrors);
-        }
-      } else {
-        // Éxito, redirigir a la página de detalle del producto (donde se listan los lotes)
+      try {
+        await registrarEntradaLote(productoId, formData);
+        // Si llegamos aquí sin errores, la operación fue exitosa
         router.push(`/dashboard/inventario/${productoId}`);
         router.refresh(); 
         // Aquí podrías mostrar un "toast" de éxito
+      } catch (error: any) {
+        // Manejo de errores si la función lanza una excepción
+        console.error('Error al registrar el lote:', error);
+        
+        // Verificar si el error tiene la estructura esperada
+        if (error && typeof error === 'object') {
+          if (error.message) {
+            setFormError(error.message);
+          }
+          if (error.errors) {
+            setFieldErrors(error.errors as FieldErrors);
+          }
+        } else {
+          setFormError("Ocurrió un error inesperado al registrar el lote.");
+        }
       }
     });
   };

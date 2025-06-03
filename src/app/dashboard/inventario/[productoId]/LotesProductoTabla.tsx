@@ -88,17 +88,27 @@ export default function LotesProductoTabla({
   const handleToggleActividadLote = async (lote: LoteDeProducto) => {
     setLoteActionError(null);
     startLoteTransition(async () => {
-      const result = lote.esta_activo 
-        ? await inactivarLoteProducto(lote.id, productoId)
-        : await reactivarLoteProducto(lote.id, productoId);
-      
-      if (!result.success) {
-        const actionText = lote.esta_activo ? "inactivar" : "reactivar";
-        setLoteActionError(result.error?.message || `Ocurrió un error al ${actionText} el lote.`);
-        console.error(`Error al ${actionText} lote (cliente):`, result.error);
-      } else {
+      try {
+        if (lote.esta_activo) {
+          await inactivarLoteProducto(lote.id, productoId);
+        } else {
+          await reactivarLoteProducto(lote.id, productoId);
+        }
+        
+        // Si llegamos aquí sin errores, la operación fue exitosa
         setLoteActionError(null);
         router.refresh();
+      } catch (error: any) {
+        // Manejo de errores si la función lanza una excepción
+        const actionText = lote.esta_activo ? "inactivar" : "reactivar";
+        console.error(`Error al ${actionText} lote (cliente):`, error);
+        
+        // Verificar si el error tiene la estructura esperada
+        if (error && typeof error === 'object' && error.message) {
+          setLoteActionError(error.message);
+        } else {
+          setLoteActionError(`Ocurrió un error al ${actionText} el lote.`);
+        }
       }
     });
   };
