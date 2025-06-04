@@ -20,6 +20,7 @@ import {
   SaveIcon,
   ArrowLeftIcon,
   ShoppingCartIcon,
+  AlertCircle
 } from "lucide-react"
 import { crearFacturaConItems, actualizarFacturaConItems } from "../actions"
 import type {
@@ -105,15 +106,7 @@ export default function FacturaForm({
     lote_id: null,
   })
 
-  const [items, setItems] = useState<FacturaItemFormData[]>(
-    initialData?.items && initialData.items.length > 0
-      ? initialData.items.map((item) => ({
-          ...getDefaultNewItem(),
-          ...item,
-          id_temporal: item.id_temporal || crypto.randomUUID(),
-        }))
-      : [getDefaultNewItem()],
-  )
+  const [items, setItems] = useState<FacturaItemFormData[]>([getDefaultNewItem()]);
 
   const [pacientesFiltrados, setPacientesFiltrados] = useState<
     (EntidadParaSelector & { propietario_id: string; especie?: string | null })[]
@@ -124,43 +117,89 @@ export default function FacturaForm({
       const filtered = todosLosPacientes.filter((p) => p.propietario_id === propietarioId)
       setPacientesFiltrados(filtered)
       if (!isEditMode || (initialData && propietarioId !== initialData.propietario_id)) {
-        if (!filtered.find((p) => p.id === pacienteId)) setPacienteId("")
+         if (!filtered.find((p) => p.id === pacienteId)) {
+            setPacienteId("")
+         }
       }
     } else {
       setPacientesFiltrados([])
-      if (!isEditMode) setPacienteId("")
+      if (!isEditMode) {
+        setPacienteId("")
+      }
     }
   }, [propietarioId, todosLosPacientes, isEditMode, initialData, pacienteId])
 
+
   useEffect(() => {
+    console.log("FacturaForm useEffect triggered. isEditMode:", isEditMode, "initialData:", JSON.stringify(initialData,null,2));
     if (isEditMode && initialData) {
-      setNumeroFactura(initialData.numero_factura || "")
-      setPropietarioId(initialData.propietario_id || "")
-      setPacienteId(initialData.paciente_id || "")
+      setNumeroFactura(initialData.numero_factura || "");
+      setPropietarioId(initialData.propietario_id || "");
+      setPacienteId(initialData.paciente_id || "");
       setFechaEmision(
         initialData.fecha_emision && isValidDate(parseISO(initialData.fecha_emision))
           ? parseISO(initialData.fecha_emision)
           : new Date(),
-      )
+      );
       setFechaVencimiento(
         initialData.fecha_vencimiento && isValidDate(parseISO(initialData.fecha_vencimiento))
           ? parseISO(initialData.fecha_vencimiento)
           : undefined,
-      )
-      setEstadoFactura(initialData.estado || "Borrador")
-      setNotasCliente(initialData.notas_cliente || "")
-      setNotasInternas(initialData.notas_internas || "")
-      setItems(
-        initialData.items && initialData.items.length > 0
-          ? initialData.items.map((item) => ({
-              ...getDefaultNewItem(),
-              ...item,
+      );
+      setEstadoFactura(initialData.estado || "Borrador");
+      setNotasCliente(initialData.notas_cliente || "");
+      setNotasInternas(initialData.notas_internas || "");
+
+      if (initialData.items && initialData.items.length > 0) {
+         console.log("Raw initialData.items en FacturaForm:", JSON.stringify(initialData.items, null, 2));
+        const mappedItems = initialData.items.map((item) => {
+            let tipoOrigenFinal: 'manual' | 'procedimiento' | 'producto';
+
+            // 1. Usar tipo_origen_item si viene explícitamente y es válido
+            if (item.tipo_origen_item === 'procedimiento' || item.tipo_origen_item === 'producto' || item.tipo_origen_item === 'manual') {
+              tipoOrigenFinal = item.tipo_origen_item;
+            } else { // 2. Si no, inferir basado en IDs
+              if (item.procedimiento_id && item.procedimiento_id !== null) {
+                tipoOrigenFinal = 'procedimiento';
+              } else if (item.producto_inventario_id && item.producto_inventario_id !== null) {
+                tipoOrigenFinal = 'producto';
+              } else {
+                tipoOrigenFinal = 'manual'; // Fallback
+              }
+            }
+            
+            // Descomenta para depuración detallada de cada ítem
+             console.log(`Item ID Temp: ${item.id_temporal}, Desc: ${item.descripcion}, ProcID: ${item.procedimiento_id}, ProdID: ${item.producto_inventario_id}, LoteID: ${item.lote_id}, Tipo Recibido: ${item.tipo_origen_item}, Tipo Determinado Final: ${tipoOrigenFinal}`);
+
+            return {
               id_temporal: item.id_temporal || crypto.randomUUID(),
-            }))
-          : [getDefaultNewItem()],
-      )
+              descripcion: item.descripcion,
+              cantidad: item.cantidad,
+              precio_unitario: item.precio_unitario,
+              porcentaje_impuesto_item: item.porcentaje_impuesto_item,
+              tipo_origen_item: tipoOrigenFinal,
+              procedimiento_id: item.procedimiento_id || null,
+              producto_inventario_id: item.producto_inventario_id || null,
+              lote_id: item.lote_id || null,
+            };
+        });
+         console.log("Mapped items para el estado en FacturaForm:", JSON.stringify(mappedItems, null, 2));
+        setItems(mappedItems);
+      } else {
+        setItems([getDefaultNewItem()]);
+      }
+    } else if (!isEditMode) {
+      setNumeroFactura("");
+      setPropietarioId("");
+      setPacienteId("");
+      setFechaEmision(new Date());
+      setFechaVencimiento(undefined);
+      setEstadoFactura("Borrador");
+      setNotasCliente("");
+      setNotasInternas("");
+      setItems([getDefaultNewItem()]);
     }
-  }, [initialData, isEditMode])
+  }, [initialData, isEditMode]); // No añadir más dependencias aquí para evitar re-cálculos innecesarios
 
   const handleItemChange = (
     index: number,
@@ -172,7 +211,7 @@ export default function FacturaForm({
     ;(currentItem as any)[field] = value
 
     if (field === "tipo_origen_item") {
-      currentItem.descripcion = ""
+      currentItem.descripcion = "" 
       currentItem.precio_unitario = "0"
       currentItem.porcentaje_impuesto_item = DEFAULT_ITEM_TAX_RATE
       currentItem.procedimiento_id = null
@@ -185,8 +224,11 @@ export default function FacturaForm({
 
   const handleCatalogItemSelect = (index: number, catalogItemId: string, type: "procedimiento" | "producto") => {
     const newItems = [...items]
-    const currentItem = { ...newItems[index] }
+    const currentItem = { ...newItems[index] } 
     let selectedCatalogItem
+
+    // **MODIFICACIÓN AQUÍ para asegurar que el tipo de origen se establece correctamente**
+    currentItem.tipo_origen_item = type; // Establecer el tipo_origen_item explícitamente
 
     if (type === "procedimiento") {
       selectedCatalogItem = procedimientosDisponibles.find((p) => p.id === catalogItemId)
@@ -206,7 +248,7 @@ export default function FacturaForm({
         currentItem.porcentaje_impuesto_item = selectedCatalogItem.porcentaje_impuesto.toString() as ImpuestoItemValue
         currentItem.producto_inventario_id = selectedCatalogItem.id
         currentItem.procedimiento_id = null
-        currentItem.lote_id = null
+        currentItem.lote_id = null 
       }
     }
     newItems[index] = currentItem
@@ -253,6 +295,7 @@ export default function FacturaForm({
     event.preventDefault()
     setFormError(null)
     setFieldErrors(null)
+     console.log("Items ANTES de enviar a la acción:", JSON.stringify(items, null, 2));
 
     const payloadItems: ItemParaPayload[] = items.map((item) => ({
       descripcion: item.descripcion,
@@ -275,6 +318,8 @@ export default function FacturaForm({
       notas_internas: notasInternas || undefined,
       items: payloadItems,
     }
+     console.log("Payload a enviar a la acción:", JSON.stringify(payload, null, 2));
+
 
     startTransition(async () => {
       let result
@@ -299,7 +344,6 @@ export default function FacturaForm({
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 p-4">
       <div className="max-w-6xl mx-auto">
-        {/* Header más compacto */}
         <div className="mb-6">
           <div className="flex items-center gap-3 mb-3">
             <div className="p-2 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-lg shadow-md">
@@ -319,7 +363,6 @@ export default function FacturaForm({
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Datos de la Factura */}
           <Card className="shadow-lg border-0 bg-white/90 backdrop-blur-sm">
             <CardHeader className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-t-lg py-3">
               <CardTitle className="flex items-center justify-center gap-2 text-lg font-semibold">
@@ -447,7 +490,6 @@ export default function FacturaForm({
             </CardContent>
           </Card>
 
-          {/* Ítems de la Factura - Layout reorganizado */}
           <Card className="shadow-lg border-0 bg-white/90 backdrop-blur-sm">
             <CardHeader className="bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-t-lg py-3">
               <CardTitle className="flex items-center justify-center gap-2 text-lg font-semibold">
@@ -462,7 +504,6 @@ export default function FacturaForm({
                     key={item.id_temporal}
                     className="p-4 border border-gray-200 rounded-lg bg-gray-50/50 hover:bg-gray-50 transition-colors"
                   >
-                    {/* Primera línea: Origen, Catálogo y Descripción */}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
                       <div className="space-y-1">
                         <Label className="text-xs font-medium text-gray-600">Origen</Label>
@@ -542,7 +583,6 @@ export default function FacturaForm({
                       </div>
                     </div>
 
-                    {/* Segunda línea: Campos de entrada */}
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
                       <div className="space-y-1">
                         <Label className="text-xs font-medium text-gray-600">Cantidad</Label>
@@ -593,7 +633,6 @@ export default function FacturaForm({
                       </div>
                     </div>
 
-                    {/* Tercera línea: Totales calculados */}
                     <div className="grid grid-cols-3 gap-4 mb-3">
                       <div className="space-y-1">
                         <Label className="text-xs font-medium text-gray-600">Base Imponible</Label>
@@ -621,7 +660,6 @@ export default function FacturaForm({
                       </div>
                     </div>
 
-                    {/* Botón eliminar */}
                     <div className="flex justify-end">
                       <Button
                         type="button"
@@ -650,7 +688,6 @@ export default function FacturaForm({
             </CardContent>
           </Card>
 
-          {/* Resumen y Totales - Más compacto */}
           <Card className="shadow-lg border-0 bg-white/90 backdrop-blur-sm">
             <CardHeader className="bg-gradient-to-r from-purple-500 to-pink-600 text-white rounded-t-lg py-3">
               <CardTitle className="flex items-center justify-center gap-2 text-lg font-semibold">
@@ -693,7 +730,6 @@ export default function FacturaForm({
             </CardContent>
           </Card>
 
-          {/* Notas - Más compacto */}
           <Card className="shadow-lg border-0 bg-white/90 backdrop-blur-sm">
             <CardHeader className="bg-gradient-to-r from-amber-500 to-orange-600 text-white rounded-t-lg py-3">
               <CardTitle className="flex items-center justify-center gap-2 text-lg font-semibold">
@@ -733,7 +769,6 @@ export default function FacturaForm({
             </CardContent>
           </Card>
 
-          {/* Error Messages */}
           {formError && (
             <div className="bg-red-50 border border-red-200 rounded-lg p-3">
               <p className="text-red-700 text-sm font-medium flex items-center gap-2">
@@ -751,7 +786,6 @@ export default function FacturaForm({
             </div>
           )}
 
-          {/* Action Buttons */}
           <div className="flex gap-3 pt-4 justify-center">
             <Button
               type="submit"

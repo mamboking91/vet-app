@@ -5,28 +5,31 @@ import { createServerActionClient } from "@supabase/auth-helpers-nextjs";
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { 
-  estadosFacturaPagoOpciones,  // Array de strings ["Borrador", "Pendiente", ...]
-  impuestoItemOpciones,      // Array de objetos [{value: "0", label: "0% (Exento)"}, ...]
-  type NuevaFacturaPayload,   // Tipo para el payload que reciben las acciones
-  type EstadoFacturaPagoValue // Tipo para los valores de estado
+import {
+  estadosFacturaPagoOpciones,
+  impuestoItemOpciones,
+  type NuevaFacturaPayload, // Este tipo ya debería tener los IDs en los items
+  type EstadoFacturaPagoValue
 } from "./types";
 
-// Extraemos los valores de string para Zod.enum a partir de las opciones importadas
-const impuestoItemValues = impuestoItemOpciones.map(opt => opt.value) as [string, ...string[]]; // Ej: ["0", "3", "7"]
-const estadosFacturaValues = estadosFacturaPagoOpciones as readonly [string, ...string[]]; // Ej: ["Borrador", "Pendiente", ...]
+const impuestoItemValues = impuestoItemOpciones.map(opt => opt.value) as [string, ...string[]];
+const estadosFacturaValues = estadosFacturaPagoOpciones as readonly [string, ...string[]];
 
-// Esquema Zod para un ítem de factura (usado internamente por FacturaConItemsSchema)
+// Esquema Zod para un ítem de factura
 const ItemFacturaSchemaInternal = z.object({
   descripcion: z.string().min(1, "La descripción del ítem es requerida."),
   cantidad: z.coerce.number().positive("La cantidad debe ser un número positivo."),
   precio_unitario: z.coerce.number().min(0, "El precio unitario (base) no puede ser negativo."),
-  porcentaje_impuesto_item: z.enum(impuestoItemValues, { 
+  porcentaje_impuesto_item: z.enum(impuestoItemValues, {
         errorMap: () => ({ message: "Porcentaje de impuesto de ítem inválido."})
-    }).transform(val => parseFloat(val)), // Convierte el string ("0", "3", "7") a número
+    }).transform(val => parseFloat(val)),
+  // CAMPOS AÑADIDOS/MODIFICADOS:
+  procedimiento_id: z.string().uuid("ID de procedimiento inválido").nullable().optional(),
+  producto_inventario_id: z.string().uuid("ID de producto inválido").nullable().optional(),
+  lote_id: z.string().uuid("ID de lote inválido").nullable().optional(), // Si manejas lotes
 });
 
-// Esquema Zod para la cabecera de la factura (usado internamente por FacturaConItemsSchema)
+// Esquema Zod para la cabecera de la factura
 const FacturaHeaderSchemaInternal = z.object({
   propietario_id: z.string().uuid("Propietario inválido."),
   paciente_id: z.string().uuid("Paciente inválido.").optional().or(z.literal('')).transform(val => val === '' ? undefined : val),
@@ -43,7 +46,6 @@ const FacturaHeaderSchemaInternal = z.object({
 });
 
 // Esquema Zod para la factura completa (cabecera + array de ítems)
-// Este se usará tanto para crear como para el payload de actualizar.
 const FacturaConItemsSchema = FacturaHeaderSchemaInternal.extend({
   items: z.array(ItemFacturaSchemaInternal).min(1, "La factura debe tener al menos un ítem."),
 });
@@ -51,7 +53,7 @@ const FacturaConItemsSchema = FacturaHeaderSchemaInternal.extend({
 
 // --- ACCIÓN PARA CREAR UNA NUEVA FACTURA CON ÍTEMS ---
 export async function crearFacturaConItems(
-  payload: NuevaFacturaPayload // La acción ACEPTA el payload con strings en los items, Zod los transforma
+  payload: NuevaFacturaPayload
 ) {
   const cookieStore = cookies();
   const supabase = createServerActionClient({ cookies: () => cookieStore });
@@ -110,6 +112,10 @@ export async function crearFacturaConItems(
       porcentaje_impuesto_item: item.porcentaje_impuesto_item,
       monto_impuesto_item: parseFloat(montoImpuestoItem.toFixed(2)),
       total_item: parseFloat(totalItem.toFixed(2)),
+      // Asegúrate de incluir los IDs aquí también si vienen del payload
+      procedimiento_id: item.procedimiento_id || null,
+      producto_inventario_id: item.producto_inventario_id || null,
+      lote_id: item.lote_id || null,
     };
   });
 
@@ -148,7 +154,7 @@ export async function crearFacturaConItems(
   }
 
   revalidatePath("/dashboard/facturacion");
-  revalidatePath("/dashboard"); 
+  revalidatePath("/dashboard");
   return { success: true, data: nuevaFactura, message: "Factura creada correctamente." };
 }
 
@@ -156,7 +162,7 @@ export async function crearFacturaConItems(
 // --- ACCIÓN PARA ACTUALIZAR UNA FACTURA EXISTENTE ---
 export async function actualizarFacturaConItems(
   facturaId: string,
-  payload: NuevaFacturaPayload 
+  payload: NuevaFacturaPayload
 ) {
   const cookieStore = cookies();
   const supabase = createServerActionClient({ cookies: () => cookieStore });
@@ -173,7 +179,7 @@ export async function actualizarFacturaConItems(
 
   const validatedFields = FacturaConItemsSchema.safeParse(payload);
   if (!validatedFields.success) {
-    console.error("Error de validación (actualizarFacturaConItems):", validatedFields.error.flatten().fieldErrors);
+    console.error("Error de validación (actualizarFacturaConItems):", validatedFields.error.flatten()); // Imprimir errores detallados
     return {
       success: false,
       error: { message: "Error de validación al actualizar.", errors: validatedFields.error.flatten().fieldErrors },
@@ -203,7 +209,9 @@ export async function actualizarFacturaConItems(
   let sumaMontosImpuestos = 0;
   const desgloseImpuestosCalculado: { [key: string]: { base: number, impuesto: number } } = {};
 
-  const itemsParaActualizar = items.map(item => {
+  // ** CAMBIO CRÍTICO AQUÍ **
+  // Usar los datos validados de `items` que ahora incluyen los IDs
+  const itemsParaActualizarEnDB = items.map(item => {
     const baseImponibleItem = item.cantidad * item.precio_unitario;
     const montoImpuestoItem = baseImponibleItem * (item.porcentaje_impuesto_item / 100);
     const totalItem = baseImponibleItem + montoImpuestoItem;
@@ -214,11 +222,17 @@ export async function actualizarFacturaConItems(
     desgloseImpuestosCalculado[tasaKey].base += baseImponibleItem;
     desgloseImpuestosCalculado[tasaKey].impuesto += montoImpuestoItem;
     return {
-      descripcion: item.descripcion, cantidad: item.cantidad, precio_unitario: parseFloat(item.precio_unitario.toFixed(2)),
+      // factura_id se añade después
+      descripcion: item.descripcion,
+      cantidad: item.cantidad,
+      precio_unitario: parseFloat(item.precio_unitario.toFixed(2)),
       base_imponible_item: parseFloat(baseImponibleItem.toFixed(2)),
       porcentaje_impuesto_item: item.porcentaje_impuesto_item,
       monto_impuesto_item: parseFloat(montoImpuestoItem.toFixed(2)),
       total_item: parseFloat(totalItem.toFixed(2)),
+      procedimiento_id: item.procedimiento_id || null,
+      producto_inventario_id: item.producto_inventario_id || null,
+      lote_id: item.lote_id || null,
     };
   });
   const totalFacturaCalculado = sumaBasesImponibles + sumaMontosImpuestos;
@@ -249,8 +263,8 @@ export async function actualizarFacturaConItems(
     return { success: false, error: { message: `Cabecera actualizada, PERO falló eliminación de ítems antiguos: ${deleteErrorItems.message}. Revisar.` } };
   }
 
-  if (itemsParaActualizar.length > 0) {
-    const itemsConFacturaId = itemsParaActualizar.map(item => ({ ...item, factura_id: facturaId }));
+  if (itemsParaActualizarEnDB.length > 0) {
+    const itemsConFacturaId = itemsParaActualizarEnDB.map(item => ({ ...item, factura_id: facturaId }));
     const { error: dbErrorItemsNuevos } = await supabase.from("items_factura").insert(itemsConFacturaId);
     if (dbErrorItemsNuevos) {
       return { success: false, error: { message: `Factura actualizada e ítems antiguos borrados, PERO falló inserción de nuevos ítems: ${dbErrorItemsNuevos.message}. Revisión URGENTE.` } };
@@ -263,7 +277,6 @@ export async function actualizarFacturaConItems(
   revalidatePath("/dashboard");
   return { success: true, data: facturaActualizada, message: "Factura actualizada correctamente." };
 }
-
 
 // --- ACCIÓN PARA ELIMINAR UNA FACTURA EN ESTADO 'BORRADOR' ---
 export async function eliminarFacturaBorrador(facturaId: string) {
@@ -296,7 +309,6 @@ export async function eliminarFacturaBorrador(facturaId: string) {
   return { success: true, message: `Factura ${factura.numero_factura} eliminada correctamente.` };
 }
 
-
 // --- ACCIÓN PARA ANULAR UNA FACTURA (CAMBIAR ESTADO A 'ANULADA') ---
 export async function anularFactura(facturaId: string) {
   const cookieStore = cookies();
@@ -315,7 +327,7 @@ export async function anularFactura(facturaId: string) {
     return { success: false, error: { message: "Factura no encontrada o error al verificarla." } };
   }
 
-  const estadosAnulables: EstadoFacturaPagoValue[] = ['Pendiente', 'Pagada Parcialmente', 'Vencida']; 
+  const estadosAnulables: EstadoFacturaPagoValue[] = ['Pendiente', 'Pagada Parcialmente', 'Vencida'];
   if (!estadosAnulables.includes(facturaActual.estado as EstadoFacturaPagoValue)) {
     if (facturaActual.estado === 'Borrador') return { success: false, error: { message: `La factura ${facturaActual.numero_factura} es un borrador. Considere eliminarla.` } };
     if (facturaActual.estado === 'Pagada') return { success: false, error: { message: `La factura ${facturaActual.numero_factura} ya está pagada. Considere una nota de crédito.` } };
@@ -324,9 +336,9 @@ export async function anularFactura(facturaId: string) {
   }
 
   const { data: facturaAnulada, error: updateError } = await supabase
-    .from('facturas').update({ 
+    .from('facturas').update({
       estado: 'Anulada' as EstadoFacturaPagoValue,
-      updated_at: new Date().toISOString() 
+      updated_at: new Date().toISOString()
     }).eq('id', facturaId).select("id, paciente_id").single();
 
   if (updateError || !facturaAnulada) {

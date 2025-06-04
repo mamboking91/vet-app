@@ -6,13 +6,12 @@ import Link from 'next/link';
 import { Button } from "@/components/ui/button";
 import { PlusCircle } from 'lucide-react';
 import FacturasTable from './FacturasTable';
-import type { FacturaParaTabla, FacturaCrudaDesdeSupabase } from './types'; 
+// El tipo PropietarioInfoAnidadoFactura se importa ahora correctamente desde types.ts
+import type { FacturaParaTabla, FacturaCrudaDesdeSupabase, PropietarioInfoAnidadoFactura } from './types';
 
 export const dynamic = 'force-dynamic';
 
 export default async function FacturacionPage() {
-  // console.log("[FacturacionPage] INICIO - Obteniendo facturas...");
-
   const cookieStore = cookies();
   const supabase = createServerComponentClient({ cookies: () => cookieStore });
 
@@ -26,7 +25,7 @@ export default async function FacturacionPage() {
         fecha_vencimiento,
         total,
         estado,
-        propietario_id, 
+        propietario_id,
         propietarios (id, nombre_completo)
       `
     )
@@ -44,23 +43,20 @@ export default async function FacturacionPage() {
         </div>
     );
   }
-  
-  // console.log("[FacturacionPage] Datos crudos de Supabase (facturasData):", JSON.stringify(facturasData, null, 2));
 
-  // Hacemos cast a la estructura cruda que devuelve Supabase (propietarios ahora es objeto)
+  // Ahora FacturaCrudaDesdeSupabase espera propietarios como PropietarioInfoAnidadoFactura[] | null
   const facturasCrudas = (facturasData || []) as FacturaCrudaDesdeSupabase[];
-  
-  // Transformamos los datos. Ahora 'facturaCruda.propietarios' ya es el objeto o null.
+
   const facturas: FacturaParaTabla[] = facturasCrudas.map((facturaCruda) => {
-    // Ya no necesitamos la lógica para extraer de un array
-    // const propietarioInfo = (facturaCruda.propietarios && facturaCruda.propietarios.length > 0)
-    //   ? facturaCruda.propietarios[0]
-    //   : null;
-    
-    // Log para depurar la estructura de propietarios en cada facturaCruda
-    // if (facturaCruda.propietarios) {
-    //   console.log(`[FacturacionPage] facturaCruda ID: ${facturaCruda.id}, facturaCruda.propietarios:`, JSON.stringify(facturaCruda.propietarios, null, 2));
-    // }
+    // *** CORRECCIÓN AQUÍ: Tomar el primer propietario del array si existe ***
+    const propietarioInfo: PropietarioInfoAnidadoFactura | null =
+      (facturaCruda.propietarios && Array.isArray(facturaCruda.propietarios) && facturaCruda.propietarios.length > 0)
+        ? facturaCruda.propietarios[0]
+        // Si por alguna razón Supabase devolviera un objeto en lugar de un array (aunque el error TS indica array),
+        // esta línea lo manejaría. Pero es principalmente para el caso del array.
+        : (facturaCruda.propietarios && !Array.isArray(facturaCruda.propietarios) 
+            ? (facturaCruda.propietarios as unknown as PropietarioInfoAnidadoFactura) // Cast a unknown primero si es necesario
+            : null);
 
 
     return {
@@ -70,11 +66,9 @@ export default async function FacturacionPage() {
       fecha_vencimiento: facturaCruda.fecha_vencimiento,
       total: facturaCruda.total,
       estado: facturaCruda.estado,
-      propietarios: facturaCruda.propietarios, // Directamente el objeto o null
+      propietarios: propietarioInfo, // Asignar el objeto único o null
     };
   });
-  
-  // console.log("[FacturacionPage] FIN - Facturas procesadas para la tabla (primeras 2):", JSON.stringify(facturas.slice(0,2), null, 2));
 
   return (
     <div className="container mx-auto py-10 px-4 md:px-6">
