@@ -25,11 +25,7 @@ export const estadosFacturaPagoOpciones = [
     total: number;
     estado: EstadoFacturaPagoValue;
     propietario_id: string;
-    // *** CORRECCIÓN AQUÍ ***
-    // Cambiar de `PropietarioInfoAnidadoFactura | null`
-    // a `PropietarioInfoAnidadoFactura[] | null`
-    // para que coincida con lo que TypeScript infiere de la consulta.
-    propietarios: PropietarioInfoAnidadoFactura[] | null;
+    propietarios: PropietarioInfoAnidadoFactura[] | null; // Coincide con el error de TS
   };
 
   export type FacturaParaTabla = {
@@ -39,7 +35,7 @@ export const estadosFacturaPagoOpciones = [
     fecha_vencimiento: string | null;
     total: number;
     estado: EstadoFacturaPagoValue;
-    propietarios: PropietarioInfoAnidadoFactura | null; // Este se mantiene, es el tipo procesado
+    propietarios: PropietarioInfoAnidadoFactura | null;
   };
 
   export type ItemFacturaFromDB = {
@@ -77,7 +73,7 @@ export const estadosFacturaPagoOpciones = [
     paciente_id: string | null;
     subtotal: number;
     monto_impuesto: number;
-    total: number;
+    total: number; // Total de la factura
     estado: EstadoFacturaPagoValue;
     notas_cliente: string | null;
     notas_internas: string | null;
@@ -88,15 +84,35 @@ export const estadosFacturaPagoOpciones = [
     updated_at: string | null;
   };
 
+  // --- INICIO: NUEVOS TIPOS Y OPCIONES PARA PAGOS ---
+  export const metodosDePagoOpciones = [
+    { value: "Efectivo", label: "Efectivo" },
+    { value: "Tarjeta", label: "Tarjeta (TPV/SumUp Manual)" },
+    { value: "Transferencia", label: "Transferencia Bancaria" },
+    { value: "Bizum", label: "Bizum" },
+  ] as const;
+  export type MetodoPagoValue = typeof metodosDePagoOpciones[number]['value'];
+
   export type PagoFacturaFromDB = {
     id: string;
     factura_id: string;
-    fecha_pago: string;
+    fecha_pago: string; // ISO string
     monto_pagado: number;
-    metodo_pago: string | null;
+    metodo_pago: MetodoPagoValue | string | null; // string si no usas ENUM, MetodoPagoValue si sí
     referencia_pago: string | null;
     notas: string | null;
+    created_at?: string; // Es bueno tenerlo
   };
+
+  export type PagoFormData = {
+    // factura_id se pasará como argumento, no desde el form directamente
+    fecha_pago: string; // Para DatePicker, formato YYYY-MM-DD
+    monto_pagado: string; // Para input number
+    metodo_pago: MetodoPagoValue | string; // Para Select
+    referencia_pago: string; // Se usará string vacío si no se provee
+    notas: string; // Se usará string vacío si no se provee
+  };
+  // --- FIN: NUEVOS TIPOS Y OPCIONES PARA PAGOS ---
 
   export type EntidadParaSelector = {
     id: string;
