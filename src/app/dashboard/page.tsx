@@ -5,7 +5,9 @@ import { cookies } from 'next/headers';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Users, Dog, Stethoscope, CalendarCheck, BarChart3, Archive, AlertCircle } from 'lucide-react';
+// Iconos corregidos: LucideCalendarWarning eliminado, AlertCircle ya está presente.
+// LucidePackageSearch se mantiene para Stock Bajo.
+import { Users, Dog, Stethoscope, CalendarCheck, BarChart3, Archive, AlertCircle, LucidePackageSearch } from 'lucide-react'; 
 import { format, startOfToday, endOfTomorrow, parseISO, addDays, isBefore } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { Badge } from "@/components/ui/badge";
@@ -25,7 +27,7 @@ type ProximaCitaCruda = {
   fecha_hora_inicio: string;
   motivo: string | null;
   tipo: string | null;
-  pacientes: PacienteInfoCruda[] | null; // Pacientes como array según error anterior
+  pacientes: PacienteInfoCruda[] | null; 
 };
 type ProximaCitaProcesada = {
   id: string;
@@ -42,27 +44,25 @@ type ProductoStockBajo = {
   unidad: string | null;
 };
 
-// Tipo para la estructura cruda que devuelve Supabase para lotes próximos a caducar
 type LoteProximoACaducarCrudo = {
   id: string; 
   numero_lote: string;
   fecha_caducidad: string; 
   stock_lote: number;
   producto_id: string; 
-  productos_inventario: { // Supabase devuelve esto como un array
+  productos_inventario: { 
     nombre: string;
     unidad: string | null;
-  }[] | null; // Array de productos o null
+  }[] | null; 
 };
 
-// Tipo final para la UI, con productos_inventario como objeto
 type LoteProximoACaducarProcesado = {
   id: string; 
   numero_lote: string;
   fecha_caducidad: string; 
   stock_lote: number;
   producto_id: string; 
-  productos_inventario: { // Objeto o null
+  productos_inventario: { 
     nombre: string;
     unidad: string | null;
   } | null;
@@ -155,13 +155,11 @@ export default async function DashboardPage() {
     .order('fecha_caducidad', { ascending: true })
     .limit(5);
 
-  let lotesProximosACaducar: LoteProximoACaducarProcesado[] = []; // Usamos el tipo procesado
+  let lotesProximosACaducar: LoteProximoACaducarProcesado[] = []; 
   if (lotesCaducidadError) {
     console.error("Error fetching lotes próximos a caducar:", lotesCaducidadError);
   } else if (lotesCaducidadData) {
-    // Hacemos cast al tipo crudo que refleja la estructura de Supabase
     const lotesCrudos = (lotesCaducidadData || []) as LoteProximoACaducarCrudo[];
-    // Transformamos los datos crudos a la estructura deseada para la UI
     lotesProximosACaducar = lotesCrudos.map(loteCrudo => {
       const productoInfo = (loteCrudo.productos_inventario && loteCrudo.productos_inventario.length > 0)
         ? loteCrudo.productos_inventario[0]
@@ -172,7 +170,7 @@ export default async function DashboardPage() {
         fecha_caducidad: loteCrudo.fecha_caducidad,
         stock_lote: loteCrudo.stock_lote,
         producto_id: loteCrudo.producto_id,
-        productos_inventario: productoInfo, // Ahora es un objeto o null
+        productos_inventario: productoInfo, 
       };
     });
   }
@@ -181,8 +179,7 @@ export default async function DashboardPage() {
     <div className="container mx-auto py-10 px-4 md:px-6">
       <h1 className="text-3xl font-bold mb-8">Dashboard de la Clínica</h1>
 
-      {/* Sección de Estadísticas */}
-      <div className="grid gap-6 mb-8 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      <div className="grid gap-6 mb-8 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Propietarios</CardTitle>
@@ -203,6 +200,34 @@ export default async function DashboardPage() {
             <Stethoscope className="h-5 w-5 text-muted-foreground" />
           </CardHeader>
           <CardContent><div className="text-2xl font-bold">{totalHistoriales}</div><p className="text-xs text-muted-foreground">Registros médicos</p></CardContent>
+        </Card>
+        
+        <Card className={productosStockBajo.length > 0 ? "border-destructive dark:border-destructive/70" : ""}>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Productos Stock Bajo</CardTitle>
+            {/* Icono corregido para stock bajo */}
+            <LucidePackageSearch className={`h-5 w-5 ${productosStockBajo.length > 0 ? 'text-destructive' : 'text-muted-foreground'}`} />
+          </CardHeader>
+          <CardContent>
+            <div className={`text-2xl font-bold ${productosStockBajo.length > 0 ? 'text-destructive dark:text-destructive/90' : ''}`}>
+              {productosStockBajo.length}
+            </div>
+            <p className="text-xs text-muted-foreground">Ítems por debajo del mínimo</p>
+          </CardContent>
+        </Card>
+
+        <Card className={lotesProximosACaducar.length > 0 ? "border-amber-500 dark:border-amber-500/70" : ""}>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Lotes Próximos a Caducar</CardTitle>
+            {/* Icono corregido de LucideCalendarWarning a AlertCircle */}
+            <AlertCircle className={`h-5 w-5 ${lotesProximosACaducar.length > 0 ? 'text-amber-600 dark:text-amber-500' : 'text-muted-foreground'}`} />
+          </CardHeader>
+          <CardContent>
+            <div className={`text-2xl font-bold ${lotesProximosACaducar.length > 0 ? 'text-amber-700 dark:text-amber-500' : ''}`}>
+              {lotesProximosACaducar.length}
+            </div>
+            <p className="text-xs text-muted-foreground">Lotes caducan en &lt;60 días</p>
+          </CardContent>
         </Card>
       </div>
       
@@ -251,7 +276,6 @@ export default async function DashboardPage() {
         </Card>
       </div>
 
-      {/* NUEVA SECCIÓN: Alertas de Inventario */}
       <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-2">
         <Card>
           <CardHeader>
@@ -282,7 +306,6 @@ export default async function DashboardPage() {
             {lotesCaducidadError && <p className="text-sm text-red-500">Error al cargar lotes por caducar.</p>}
             {lotesProximosACaducar.length > 0 ? (
               <ul className="space-y-2 text-sm">
-                {/* Usamos el tipo procesado LoteProximoACaducarProcesado para el map */}
                 {lotesProximosACaducar.map(lote => (
                   <li key={lote.id} className="flex justify-between items-center">
                     <div>

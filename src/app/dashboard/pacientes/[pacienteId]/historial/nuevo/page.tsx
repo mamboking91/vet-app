@@ -1,4 +1,4 @@
-// app/dashboard/pacientes/[pacienteId]/historial/nuevo/page.tsx
+// src/app/dashboard/pacientes/[pacienteId]/historial/nuevo/page.tsx
 import React from 'react';
 import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
@@ -6,7 +6,9 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { ChevronLeft } from 'lucide-react';
-import HistorialMedicoForm from './HistorialMedicoForm'; // Crearemos este componente
+import HistorialMedicoForm from './HistorialMedicoForm';
+// --- CORRECCIÓN: La ruta de importación ahora apunta a 'facturacion/types' ---
+import type { ProductoInventarioParaFactura, ProcedimientoParaFactura } from '@/app/dashboard/facturacion/types';
 
 interface NuevaEntradaHistorialPageProps {
   params: {
@@ -32,6 +34,28 @@ export default async function NuevaEntradaHistorialPage({ params }: NuevaEntrada
     notFound();
   }
 
+  // Obtener productos del inventario para el selector
+  const { data: productosData, error: productosError } = await supabase
+    .from('productos_inventario')
+    .select('id, nombre, requiere_lote, precio_venta, porcentaje_impuesto')
+    .order('nombre', { ascending: true });
+
+  if (productosError) {
+    console.error("Error fetching productos para historial:", productosError);
+  }
+  const productosDisponibles = (productosData || []) as ProductoInventarioParaFactura[];
+
+  // Obtener procedimientos del catálogo
+  const { data: procedimientosData, error: procedimientosError } = await supabase
+    .from('procedimientos')
+    .select('id, nombre, precio, porcentaje_impuesto')
+    .order('nombre', { ascending: true });
+
+  if (procedimientosError) {
+    console.error("Error fetching procedimientos para historial:", procedimientosError);
+  }
+  const procedimientosDisponibles = (procedimientosData || []) as ProcedimientoParaFactura[];
+
   return (
     <div className="container mx-auto py-10 px-4 md:px-6">
       <div className="flex items-center mb-6">
@@ -44,8 +68,11 @@ export default async function NuevaEntradaHistorialPage({ params }: NuevaEntrada
           Añadir Entrada al Historial de: {paciente.nombre}
         </h1>
       </div>
-      {/* Pasamos pacienteId al formulario */}
-      <HistorialMedicoForm pacienteId={paciente.id} />
+      <HistorialMedicoForm 
+        pacienteId={paciente.id} 
+        productosDisponibles={productosDisponibles}
+        procedimientosDisponibles={procedimientosDisponibles}
+      />
     </div>
   );
 }

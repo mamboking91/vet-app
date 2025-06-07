@@ -1,4 +1,4 @@
-// app/dashboard/facturacion/nueva/FacturaForm.tsx
+// src/app/dashboard/facturacion/nueva/FacturaForm.tsx
 "use client"
 
 import type React from "react"
@@ -80,12 +80,12 @@ export default function FacturaForm({
   const [numeroFactura, setNumeroFactura] = useState(initialData?.numero_factura || "")
   const [propietarioId, setPropietarioId] = useState(initialData?.propietario_id || "")
   const [pacienteId, setPacienteId] = useState(initialData?.paciente_id || "")
-  const [fechaEmision, setFechaEmision] = useState<Date | undefined>(() =>
+  const [fechaEmision, setFechaEmision] = useState<Date | undefined>(
     initialData?.fecha_emision && isValidDate(parseISO(initialData.fecha_emision))
       ? parseISO(initialData.fecha_emision)
       : new Date(),
   )
-  const [fechaVencimiento, setFechaVencimiento] = useState<Date | undefined>(() =>
+  const [fechaVencimiento, setFechaVencimiento] = useState<Date | undefined>(
     initialData?.fecha_vencimiento && isValidDate(parseISO(initialData.fecha_vencimiento))
       ? parseISO(initialData.fecha_vencimiento)
       : undefined,
@@ -116,79 +116,53 @@ export default function FacturaForm({
     if (propietarioId) {
       const filtered = todosLosPacientes.filter((p) => p.propietario_id === propietarioId)
       setPacientesFiltrados(filtered)
-      if (!isEditMode || (initialData && propietarioId !== initialData.propietario_id)) {
-         if (!filtered.find((p) => p.id === pacienteId)) {
-            setPacienteId("")
-         }
+      if (!filtered.find((p) => p.id === pacienteId)) {
+        setPacienteId("")
       }
     } else {
       setPacientesFiltrados([])
-      if (!isEditMode) {
-        setPacienteId("")
-      }
+      setPacienteId("")
     }
-  }, [propietarioId, todosLosPacientes, isEditMode, initialData, pacienteId])
+  }, [propietarioId, todosLosPacientes, pacienteId])
 
 
   useEffect(() => {
-    console.log("FacturaForm useEffect triggered. isEditMode:", isEditMode, "initialData:", JSON.stringify(initialData,null,2));
-    if (isEditMode && initialData) {
+    // Este efecto maneja la carga inicial de datos.
+    // Funciona tanto para editar una factura existente como para crear una nueva
+    // pre-poblada desde un historial médico.
+    if (initialData && Object.keys(initialData).length > 0) {
       setNumeroFactura(initialData.numero_factura || "");
       setPropietarioId(initialData.propietario_id || "");
       setPacienteId(initialData.paciente_id || "");
-      setFechaEmision(
-        initialData.fecha_emision && isValidDate(parseISO(initialData.fecha_emision))
-          ? parseISO(initialData.fecha_emision)
-          : new Date(),
-      );
-      setFechaVencimiento(
-        initialData.fecha_vencimiento && isValidDate(parseISO(initialData.fecha_vencimiento))
-          ? parseISO(initialData.fecha_vencimiento)
-          : undefined,
-      );
+      
+      const emisionDate = initialData.fecha_emision ? parseISO(initialData.fecha_emision) : new Date();
+      setFechaEmision(isValidDate(emisionDate) ? emisionDate : new Date());
+
+      const vencimientoDate = initialData.fecha_vencimiento ? parseISO(initialData.fecha_vencimiento) : undefined;
+      setFechaVencimiento(vencimientoDate && isValidDate(vencimientoDate) ? vencimientoDate : undefined);
+      
       setEstadoFactura(initialData.estado || "Borrador");
       setNotasCliente(initialData.notas_cliente || "");
       setNotasInternas(initialData.notas_internas || "");
 
       if (initialData.items && initialData.items.length > 0) {
-         console.log("Raw initialData.items en FacturaForm:", JSON.stringify(initialData.items, null, 2));
-        const mappedItems = initialData.items.map((item) => {
-            let tipoOrigenFinal: 'manual' | 'procedimiento' | 'producto';
-
-            // 1. Usar tipo_origen_item si viene explícitamente y es válido
-            if (item.tipo_origen_item === 'procedimiento' || item.tipo_origen_item === 'producto' || item.tipo_origen_item === 'manual') {
-              tipoOrigenFinal = item.tipo_origen_item;
-            } else { // 2. Si no, inferir basado en IDs
-              if (item.procedimiento_id && item.procedimiento_id !== null) {
-                tipoOrigenFinal = 'procedimiento';
-              } else if (item.producto_inventario_id && item.producto_inventario_id !== null) {
-                tipoOrigenFinal = 'producto';
-              } else {
-                tipoOrigenFinal = 'manual'; // Fallback
-              }
-            }
-            
-            // Descomenta para depuración detallada de cada ítem
-             console.log(`Item ID Temp: ${item.id_temporal}, Desc: ${item.descripcion}, ProcID: ${item.procedimiento_id}, ProdID: ${item.producto_inventario_id}, LoteID: ${item.lote_id}, Tipo Recibido: ${item.tipo_origen_item}, Tipo Determinado Final: ${tipoOrigenFinal}`);
-
-            return {
-              id_temporal: item.id_temporal || crypto.randomUUID(),
-              descripcion: item.descripcion,
-              cantidad: item.cantidad,
-              precio_unitario: item.precio_unitario,
-              porcentaje_impuesto_item: item.porcentaje_impuesto_item,
-              tipo_origen_item: tipoOrigenFinal,
-              procedimiento_id: item.procedimiento_id || null,
-              producto_inventario_id: item.producto_inventario_id || null,
-              lote_id: item.lote_id || null,
-            };
-        });
-         console.log("Mapped items para el estado en FacturaForm:", JSON.stringify(mappedItems, null, 2));
+        const mappedItems = initialData.items.map(item => ({
+          id_temporal: item.id_temporal || crypto.randomUUID(),
+          descripcion: item.descripcion || '',
+          cantidad: item.cantidad?.toString() || '1',
+          precio_unitario: item.precio_unitario?.toString() || '0',
+          porcentaje_impuesto_item: item.porcentaje_impuesto_item || DEFAULT_ITEM_TAX_RATE,
+          tipo_origen_item: item.tipo_origen_item || 'manual',
+          procedimiento_id: item.procedimiento_id || null,
+          producto_inventario_id: item.producto_inventario_id || null,
+          lote_id: item.lote_id || null,
+        }));
         setItems(mappedItems);
       } else {
         setItems([getDefaultNewItem()]);
       }
-    } else if (!isEditMode) {
+    } else {
+      // Si no hay initialData, reseteamos a un formulario completamente en blanco
       setNumeroFactura("");
       setPropietarioId("");
       setPacienteId("");
@@ -199,7 +173,7 @@ export default function FacturaForm({
       setNotasInternas("");
       setItems([getDefaultNewItem()]);
     }
-  }, [initialData, isEditMode]); // No añadir más dependencias aquí para evitar re-cálculos innecesarios
+  }, [initialData]);
 
   const handleItemChange = (
     index: number,
@@ -227,8 +201,7 @@ export default function FacturaForm({
     const currentItem = { ...newItems[index] } 
     let selectedCatalogItem
 
-    // **MODIFICACIÓN AQUÍ para asegurar que el tipo de origen se establece correctamente**
-    currentItem.tipo_origen_item = type; // Establecer el tipo_origen_item explícitamente
+    currentItem.tipo_origen_item = type;
 
     if (type === "procedimiento") {
       selectedCatalogItem = procedimientosDisponibles.find((p) => p.id === catalogItemId)
@@ -295,7 +268,6 @@ export default function FacturaForm({
     event.preventDefault()
     setFormError(null)
     setFieldErrors(null)
-     console.log("Items ANTES de enviar a la acción:", JSON.stringify(items, null, 2));
 
     const payloadItems: ItemParaPayload[] = items.map((item) => ({
       descripcion: item.descripcion,
@@ -318,8 +290,6 @@ export default function FacturaForm({
       notas_internas: notasInternas || undefined,
       items: payloadItems,
     }
-     console.log("Payload a enviar a la acción:", JSON.stringify(payload, null, 2));
-
 
     startTransition(async () => {
       let result
@@ -335,12 +305,13 @@ export default function FacturaForm({
           setFieldErrors(result.error.errors as FieldErrors)
         }
       } else {
-        router.push(isEditMode ? `/dashboard/facturacion/${facturaId}` : "/dashboard/facturacion")
+        router.push(isEditMode && result.data?.id ? `/dashboard/facturacion/${result.data.id}` : "/dashboard/facturacion")
         router.refresh()
       }
     })
   }
 
+  // El resto del JSX del return no cambia.
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 p-4">
       <div className="max-w-6xl mx-auto">

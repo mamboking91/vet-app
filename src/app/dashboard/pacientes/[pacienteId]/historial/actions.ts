@@ -1,207 +1,182 @@
-// app/dashboard/pacientes/[pacienteId]/historial/actions.ts
+// src/app/dashboard/pacientes/[pacienteId]/historial/actions.ts
 "use server";
 
 import { createServerActionClient } from "@supabase/auth-helpers-nextjs";
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { tiposDeCitaOpciones } from "../../../citas/types";
 
-// Estos son los valores de tu ENUM tipo_registro_medico
-const tiposRegistroMedico = [
-  "Consulta", "Vacunación", "Desparasitación", "Procedimiento", 
-  "Observación", "Análisis Laboratorio", "Imagenología", "Cirugía", "Otro"
-] as const; // 'as const' para que Zod pueda inferir los literales
+const tiposDeCitaValues = tiposDeCitaOpciones.map(t => t.value) as [string, ...string[]];
 
-// Esquema para AGREGAR una entrada
-const CreateHistorialMedicoSchema = z.object({
+// Esquema para un ítem consumido
+const ConsumedItemSchema = z.object({
+  producto_id: z.string().uuid("Producto inválido"),
+  cantidad: z.coerce.number().positive("La cantidad del producto debe ser positiva."),
+});
+
+// Esquema para un procedimiento realizado
+const PerformedProcedureSchema = z.object({
+  procedimiento_id: z.string().uuid("Procedimiento inválido"),
+  cantidad: z.coerce.number().positive("La cantidad del procedimiento debe ser positiva."),
+});
+
+// Esquema principal, ahora con las dos listas
+const HistorialMedicoSchema = z.object({
   paciente_id: z.string().uuid("ID de paciente inválido."),
-  fecha_evento: z.string().refine((date) => date === '' || !isNaN(Date.parse(date)), { // Permite string vacío o fecha válida
-    message: "Fecha del evento inválida.",
-  }),
-  tipo: z.enum(tiposRegistroMedico, {
-    errorMap: () => ({ message: "Por favor, selecciona un tipo de registro válido." }),
-  }),
+  fecha_evento: z.string().refine((date) => !isNaN(Date.parse(date)), { message: "Fecha inválida." }),
+  tipo: z.enum(tiposDeCitaValues),
   descripcion: z.string().min(1, "La descripción es requerida."),
   diagnostico: z.string().transform(val => val === '' ? undefined : val).optional(),
   tratamiento_indicado: z.string().transform(val => val === '' ? undefined : val).optional(),
   notas_seguimiento: z.string().transform(val => val === '' ? undefined : val).optional(),
+  consumed_items: z.string().transform((val, ctx) => {
+    if (!val || val === '[]') return [];
+    try {
+      return z.array(ConsumedItemSchema).parse(JSON.parse(val));
+    } catch (e) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Los ítems consumidos tienen un formato inválido." });
+      return z.NEVER;
+    }
+  }).optional(),
+  procedimientos_realizados: z.string().transform((val, ctx) => {
+    if (!val || val === '[]') return [];
+    try {
+      return z.array(PerformedProcedureSchema).parse(JSON.parse(val));
+    } catch (e) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Los procedimientos realizados tienen un formato inválido." });
+      return z.NEVER;
+    }
+  }).optional(),
 });
 
-// Esquema para ACTUALIZAR una entrada (todos los campos son opcionales, pero si se proveen deben ser válidos)
-const UpdateHistorialMedicoSchema = z.object({
-  fecha_evento: z.string().refine((date) => date === '' || !isNaN(Date.parse(date)), {
-    message: "Fecha del evento inválida.",
-  }).optional(),
-  tipo: z.enum(tiposRegistroMedico).optional(),
-  descripcion: z.string().min(1, "La descripción es requerida si se provee.").optional(), // Si se envía, no puede ser vacía
-  diagnostico: z.string().transform(val => val === '' ? undefined : val).optional(),
-  tratamiento_indicado: z.string().transform(val => val === '' ? undefined : val).optional(),
-  notas_seguimiento: z.string().transform(val => val === '' ? undefined : val).optional(),
-}).partial(); // .partial() asegura que todos los campos del objeto base sean opcionales
 
-
-// --- ACCIÓN PARA AGREGAR UNA NUEVA ENTRADA AL HISTORIAL ---
+// --- ACCIÓN PARA AGREGAR UNA NUEVA ENTRADA ---
 export async function agregarEntradaHistorial(formData: FormData) {
   const cookieStore = cookies();
   const supabase = createServerActionClient({ cookies: () => cookieStore });
 
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    return { success: false, error: { message: "Usuario no autenticado." } };
-  }
+  if (!user) return { success: false, error: { message: "Usuario no autenticado." } };
 
-  const rawFormData = {
-    paciente_id: formData.get("paciente_id"),
-    fecha_evento: formData.get("fecha_evento"),
-    tipo: formData.get("tipo"),
-    descripcion: formData.get("descripcion"),
-    diagnostico: formData.get("diagnostico"),
-    tratamiento_indicado: formData.get("tratamiento_indicado"),
-    notas_seguimiento: formData.get("notas_seguimiento"),
-  };
-
-  const validatedFields = CreateHistorialMedicoSchema.safeParse(rawFormData);
+  const rawFormData = Object.fromEntries(formData.entries());
+  const validatedFields = HistorialMedicoSchema.safeParse(rawFormData);
 
   if (!validatedFields.success) {
-    console.error("Error de validación (agregarEntradaHistorial):", validatedFields.error.flatten().fieldErrors);
-    return {
-      success: false,
-      error: { message: "Error de validación. Por favor, revisa los campos.", errors: validatedFields.error.flatten().fieldErrors },
-    };
+    return { success: false, error: { message: "Error de validación.", errors: validatedFields.error.flatten().fieldErrors } };
   }
   
-  const dataToInsert = {
-    paciente_id: validatedFields.data.paciente_id,
-    fecha_evento: new Date(validatedFields.data.fecha_evento).toISOString().split('T')[0],
-    tipo: validatedFields.data.tipo,
-    descripcion: validatedFields.data.descripcion,
-    diagnostico: validatedFields.data.diagnostico ?? null,
-    tratamiento_indicado: validatedFields.data.tratamiento_indicado ?? null,
-    notas_seguimiento: validatedFields.data.notas_seguimiento ?? null,
-    veterinario_responsable_id: user.id, // Asigna el usuario actual como responsable
-  };
+  const { consumed_items, procedimientos_realizados, ...historialData } = validatedFields.data;
 
-  const { data, error: dbError } = await supabase
+  const { data: nuevaEntrada, error: dbError } = await supabase
     .from("historiales_medicos")
-    .insert([dataToInsert])
-    .select().single();
+    .insert([{ 
+        ...historialData,
+        procedimientos_realizados: procedimientos_realizados,
+        veterinario_responsable_id: user.id 
+    }])
+    .select("id")
+    .single();
 
-  if (dbError) {
-    console.error("Error al insertar entrada en historial:", dbError);
-    return { success: false, error: { message: `Error de base de datos: ${dbError.message}` } };
+  if (dbError || !nuevaEntrada) {
+    return { success: false, error: { message: `Error al crear la entrada: ${dbError?.message}` } };
   }
-  revalidatePath(`/dashboard/pacientes/${validatedFields.data.paciente_id}`);
-  return { success: true, data };
+
+  if (consumed_items && consumed_items.length > 0) {
+    for (const item of consumed_items) {
+      const { error: rpcError } = await supabase.rpc('consumir_producto_para_historial', {
+        p_producto_id: item.producto_id,
+        p_cantidad_a_consumir: item.cantidad,
+        p_historial_id: nuevaEntrada.id
+      });
+      if (rpcError) {
+        await supabase.from('historiales_medicos').delete().eq('id', nuevaEntrada.id);
+        return { success: false, error: { message: `No se pudo guardar. Falló el descuento de stock: ${rpcError.message}.` }};
+      }
+    }
+  }
+
+  revalidatePath(`/dashboard/pacientes/${historialData.paciente_id}`);
+  revalidatePath('/dashboard/inventario');
+  return { success: true, data: nuevaEntrada };
 }
 
-// --- ACCIÓN PARA ACTUALIZAR UNA ENTRADA DE HISTORIAL EXISTENTE ---
+// --- ACCIÓN PARA ACTUALIZAR UNA ENTRADA EXISTENTE ---
 export async function actualizarEntradaHistorial(historialId: string, formData: FormData) {
   const cookieStore = cookies();
   const supabase = createServerActionClient({ cookies: () => cookieStore });
 
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    return { success: false, error: { message: "Usuario no autenticado." } };
-  }
+  if (!user) return { success: false, error: { message: "Usuario no autenticado." } };
 
-  const dataFromForm = {
-    fecha_evento: formData.get("fecha_evento"),
-    tipo: formData.get("tipo"),
-    descripcion: formData.get("descripcion"),
-    diagnostico: formData.get("diagnostico"),
-    tratamiento_indicado: formData.get("tratamiento_indicado"),
-    notas_seguimiento: formData.get("notas_seguimiento"),
-  };
-
-  const validatedFields = UpdateHistorialMedicoSchema.safeParse(dataFromForm);
+  const rawFormData = Object.fromEntries(formData.entries());
+  const validatedFields = HistorialMedicoSchema.partial().safeParse(rawFormData);
 
   if (!validatedFields.success) {
-    console.error("Error de validación (actualizarEntradaHistorial):", validatedFields.error.flatten().fieldErrors);
-    return {
-      success: false,
-      error: { message: "Error de validación al actualizar.", errors: validatedFields.error.flatten().fieldErrors },
-    };
+    return { success: false, error: { message: "Error de validación al actualizar.", errors: validatedFields.error.flatten().fieldErrors } };
   }
-
-  const dataToUpdate: { [key: string]: any } = {};
-  if (validatedFields.data.fecha_evento !== undefined) {
-    dataToUpdate.fecha_evento = new Date(validatedFields.data.fecha_evento).toISOString().split('T')[0];
-  }
-  if (validatedFields.data.tipo !== undefined) dataToUpdate.tipo = validatedFields.data.tipo;
-  if (validatedFields.data.descripcion !== undefined) dataToUpdate.descripcion = validatedFields.data.descripcion;
   
-  if (validatedFields.data.diagnostico !== undefined) dataToUpdate.diagnostico = validatedFields.data.diagnostico ?? null;
-  if (validatedFields.data.tratamiento_indicado !== undefined) dataToUpdate.tratamiento_indicado = validatedFields.data.tratamiento_indicado ?? null;
-  if (validatedFields.data.notas_seguimiento !== undefined) dataToUpdate.notas_seguimiento = validatedFields.data.notas_seguimiento ?? null;
-  // Opcional: Podrías querer actualizar el veterinario_responsable_id si la edición la hace otro usuario
-  // dataToUpdate.veterinario_responsable_id = user.id; 
+  const { consumed_items, procedimientos_realizados, ...historialData } = validatedFields.data;
 
-  if (Object.keys(dataToUpdate).length === 0) {
-    return { success: true, message: "No se proporcionaron datos para actualizar.", data: null };
+  // 1. Revertir consumos de stock anteriores para esta entrada
+  const { error: revertError } = await supabase.rpc('revertir_consumo_por_historial', { p_historial_id: historialId });
+  if (revertError) {
+    return { success: false, error: { message: `Error al actualizar el inventario: ${revertError.message}` } };
   }
 
-  const { data, error: dbError } = await supabase
+  // 2. Actualizar la entrada del historial con los nuevos datos
+  const dataToUpdate = { ...historialData, updated_at: new Date().toISOString() };
+  if (procedimientos_realizados !== undefined) {
+    (dataToUpdate as any).procedimientos_realizados = procedimientos_realizados;
+  }
+
+  const { data: updatedEntry, error: updateError } = await supabase
     .from("historiales_medicos")
     .update(dataToUpdate)
     .eq("id", historialId)
-    .select().single();
+    .select("id, paciente_id")
+    .single();
 
-  if (dbError) {
-    console.error('Error al actualizar entrada de historial:', dbError);
-    return { success: false, error: { message: `Error de base de datos: ${dbError.message}` } };
+  if (updateError) {
+    // Aquí podrías intentar reaplicar el stock original, pero es complejo. Es mejor notificar el error.
+    return { success: false, error: { message: `Error de BD al actualizar la entrada. El stock ha sido revertido, por favor, inténtelo de nuevo: ${updateError.message}` } };
   }
 
-  // Necesitamos el paciente_id para revalidar la página de detalles correcta.
-  // La respuesta 'data' de la actualización contendrá la entrada actualizada, incluyendo paciente_id.
-  if (data?.paciente_id) {
-    revalidatePath(`/dashboard/pacientes/${data.paciente_id}`);
-    revalidatePath(`/dashboard/pacientes/${data.paciente_id}/historial/${historialId}/editar`);
+  // 3. Aplicar el nuevo consumo de inventario
+  if (consumed_items && consumed_items.length > 0) {
+    for (const item of consumed_items) {
+      const { error: rpcError } = await supabase.rpc('consumir_producto_para_historial', {
+        p_producto_id: item.producto_id,
+        p_cantidad_a_consumir: item.cantidad,
+        p_historial_id: historialId
+      });
+      if (rpcError) {
+        return { success: false, error: { message: `Entrada actualizada, pero falló el nuevo descuento de stock: ${rpcError.message}. Revise el inventario.` } };
+      }
+    }
   }
 
-  return { success: true, data };
+  revalidatePath(`/dashboard/pacientes/${updatedEntry.paciente_id}`);
+  revalidatePath('/dashboard/inventario');
+  revalidatePath(`/dashboard/pacientes/${updatedEntry.paciente_id}/historial/${historialId}/editar`);
+  return { success: true, data: updatedEntry };
 }
 
-// --- ACCIÓN PARA ELIMINAR UNA ENTRADA DE HISTORIAL ---
-export async function eliminarEntradaHistorial(
-    historialId: string,
-    pacienteId: string // Se necesita para revalidar la ruta del paciente
-) {
-  const IdSchema = z.string().uuid("ID inválido.");
-  const historialIdValidation = IdSchema.safeParse(historialId);
-  const pacienteIdValidation = IdSchema.safeParse(pacienteId);
-
-  if (!historialIdValidation.success || !pacienteIdValidation.success) {
-    return { 
-        success: false, 
-        error: { message: "IDs proporcionados inválidos." } 
-    };
-  }
-
-  const cookieStore = cookies();
-  const supabase = createServerActionClient({ cookies: () => cookieStore });
-
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    return { 
-        success: false,
-        error: { message: "Usuario no autenticado." } 
-    };
-  }
-
-  const { error: dbError } = await supabase
-    .from("historiales_medicos")
-    .delete()
-    .eq("id", historialId)
-    .eq("paciente_id", pacienteId); // Seguridad extra: solo borrar si también coincide el pacienteId
-
-  if (dbError) {
-    console.error('Error al eliminar entrada de historial:', dbError);
-    return { 
-        success: false,
-        error: { message: `Error de base de datos al eliminar: ${dbError.message}` } 
-    };
-  }
-
-  revalidatePath(`/dashboard/pacientes/${pacienteId}`);
-  return { success: true, message: "Entrada de historial eliminada correctamente." };
+// --- ACCIÓN PARA ELIMINAR UNA ENTRADA ---
+export async function eliminarEntradaHistorial(historialId: string, pacienteId: string) {
+    const cookieStore = cookies();
+    const supabase = createServerActionClient({ cookies: () => cookieStore });
+    // Revertir stock asociado antes de eliminar
+    const { error: revertError } = await supabase.rpc('revertir_consumo_por_historial', { p_historial_id: historialId });
+    if (revertError) {
+        return { success: false, error: { message: `No se pudo eliminar: Error al revertir el stock asociado. ${revertError.message}` } };
+    }
+    // Eliminar la entrada del historial
+    const { error: dbError } = await supabase.from("historiales_medicos").delete().eq("id", historialId);
+    if (dbError) {
+        return { success: false, error: { message: `Stock revertido, pero error al eliminar la entrada del historial: ${dbError.message}`}};
+    }
+    revalidatePath(`/dashboard/pacientes/${pacienteId}`);
+    revalidatePath('/dashboard/inventario');
+    return { success: true, message: "Entrada de historial eliminada y stock revertido." };
 }

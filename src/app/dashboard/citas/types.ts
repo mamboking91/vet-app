@@ -1,18 +1,20 @@
-// app/dashboard/citas/types.ts
+// src/app/dashboard/citas/types.ts
+import type React from "react";
+import { Stethoscope, Pill, FileText } from 'lucide-react';
 
 // -----------------------------------------------------------------------------
 // Constantes y Tipos para Opciones de Selects (Formularios y Zod)
 // -----------------------------------------------------------------------------
 
 export const tiposDeCitaOpciones = [
-    { value: "Consulta General", label: "Consulta General" },
-    { value: "Vacunación", label: "Vacunación" },
-    { value: "Desparasitación", label: "Desparasitación" },
-    { value: "Revisión", label: "Revisión" },
-    { value: "Cirugía Programada", label: "Cirugía Programada" },
-    { value: "Urgencia", label: "Urgencia" },
-    { value: "Peluquería", label: "Peluquería" },
-    { value: "Otro", label: "Otro" },
+    { value: "Consulta General", label: "Consulta General", icon: Stethoscope },
+    { value: "Vacunación", label: "Vacunación", icon: Pill },
+    { value: "Desparasitación", label: "Desparasitación", icon: Pill },
+    { value: "Revisión", label: "Revisión", icon: Stethoscope },
+    { value: "Cirugía Programada", label: "Cirugía Programada", icon: Stethoscope },
+    { value: "Urgencia", label: "Urgencia", icon: Stethoscope },
+    { value: "Peluquería", label: "Peluquería", icon: FileText },
+    { value: "Otro", label: "Otro", icon: FileText },
   ] as const;
   export type TipoCitaValue = typeof tiposDeCitaOpciones[number]['value'];
   

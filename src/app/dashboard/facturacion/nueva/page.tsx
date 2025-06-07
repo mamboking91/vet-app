@@ -1,4 +1,4 @@
-// app/dashboard/facturacion/nueva/page.tsx
+// src/app/dashboard/facturacion/nueva/page.tsx
 import React from 'react';
 import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
@@ -9,69 +9,130 @@ import FacturaForm from './FacturaForm';
 import type { 
   EntidadParaSelector,
   ProcedimientoParaFactura,
-  ProductoInventarioParaFactura
+  ProductoInventarioParaFactura,
+  FacturaItemFormData,
+  ImpuestoItemValue,
 } from '../types'; 
+import { format, parseISO, isValid } from 'date-fns';
 
 export const dynamic = 'force-dynamic';
 
-export default async function NuevaFacturaPage() {
+export default async function NuevaFacturaPage({ searchParams }: { searchParams?: { fromHistorial?: string }}) {
   const cookieStore = cookies();
   const supabase = createServerComponentClient({ cookies: () => cookieStore });
+  const historialId = searchParams?.fromHistorial;
+  let initialDataForForm = {};
 
-  // 1. Obtener lista de Propietarios
-  const { data: propietariosData, error: propietariosError } = await supabase
-    .from('propietarios').select('id, nombre_completo').order('nombre_completo', { ascending: true });
-  if (propietariosError) console.error("Error fetching propietarios:", propietariosError);
-  const propietariosParaSelector: EntidadParaSelector[] = (propietariosData || []).map(p => ({
-    id: p.id,
-    nombre: p.nombre_completo || 'Nombre no disponible',
+  // Obtener catálogos para los selectores del formulario
+  const [propietariosResult, pacientesResult, procedimientosResult, productosResult] = await Promise.all([
+    supabase.from('propietarios').select('id, nombre_completo').order('nombre_completo'),
+    supabase.from('pacientes').select('id, nombre, propietario_id, especie').order('nombre'),
+    supabase.from('procedimientos').select('id, nombre, precio, porcentaje_impuesto').order('nombre'),
+    supabase.from('productos_inventario').select('id, nombre, precio_venta, porcentaje_impuesto, requiere_lote').order('nombre')
+  ]);
+
+  const propietariosParaSelector: EntidadParaSelector[] = (propietariosResult.data || []).map(p => ({
+    id: p.id, nombre: p.nombre_completo || 'N/A',
   }));
 
-  // 2. Obtener lista de Pacientes
-  const { data: todosPacientesData, error: pacientesError } = await supabase
-    .from('pacientes').select('id, nombre, propietario_id, especie').order('nombre', { ascending: true });
-  if (pacientesError) console.error("Error fetching pacientes:", pacientesError);
   const pacientesParaSelector: (EntidadParaSelector & { propietario_id: string, especie?: string | null })[] = 
-    (todosPacientesData || []).map(p_data => {
-      // La consulta para pacientes NO anida propietarios aquí, así que no podemos mostrar el nombre del propietario
-      // directamente desde p_data.propietarios. Si se quisiera, se necesitaría un join o una consulta anidada.
-      // Por ahora, el nombre del paciente y su especie.
-      const especieInfo = p_data.especie ? ` (${p_data.especie})` : '';
-      return {
-        id: p_data.id,
-        nombre: `${p_data.nombre}${especieInfo}`, 
-        propietario_id: p_data.propietario_id,
+    (pacientesResult.data || []).map(p_data => ({
+      id: p_data.id,
+      nombre: `${p_data.nombre}${p_data.especie ? ` (${p_data.especie})` : ''}`,
+      propietario_id: p_data.propietario_id,
+  }));
+  
+  const procedimientosDisponibles: ProcedimientoParaFactura[] = (procedimientosResult.data || []);
+  const productosDisponibles: ProductoInventarioParaFactura[] = (productosResult.data || []);
+
+  if (historialId) {
+    const { data: historial } = await supabase
+      .from('historiales_medicos')
+      .select('*, pacientes(*, propietarios(id, nombre_completo))')
+      .eq('id', historialId)
+      .single();
+
+    if (historial) {
+      const items: FacturaItemFormData[] = [];
+      
+      const procedimientoPrincipal = procedimientosDisponibles.find(p => p.nombre === historial.tipo);
+      if (procedimientoPrincipal) {
+        items.push({
+          id_temporal: crypto.randomUUID(),
+          descripcion: historial.descripcion || historial.tipo,
+          cantidad: "1",
+          precio_unitario: (procedimientoPrincipal.precio ?? 0).toString(),
+          porcentaje_impuesto_item: (procedimientoPrincipal.porcentaje_impuesto ?? 0).toString() as ImpuestoItemValue,
+          tipo_origen_item: 'procedimiento',
+          procedimiento_id: procedimientoPrincipal.id,
+          producto_inventario_id: null,
+          lote_id: null,
+        });
+      }
+
+      if (historial.procedimientos_realizados && Array.isArray(historial.procedimientos_realizados)) {
+        historial.procedimientos_realizados.forEach((procRealizado: any) => {
+          const procDeCatalogo = procedimientosDisponibles.find(p => p.id === procRealizado.procedimiento_id);
+          if (procDeCatalogo) {
+            items.push({
+              id_temporal: crypto.randomUUID(),
+              descripcion: procDeCatalogo.nombre,
+              cantidad: (procRealizado.cantidad || 1).toString(),
+              precio_unitario: (procDeCatalogo.precio ?? 0).toString(),
+              porcentaje_impuesto_item: (procDeCatalogo.porcentaje_impuesto ?? 0).toString() as ImpuestoItemValue,
+              tipo_origen_item: 'procedimiento',
+              procedimiento_id: procDeCatalogo.id,
+              producto_inventario_id: null,
+              lote_id: null,
+            });
+          }
+        });
+      }
+
+      const { data: movimientos } = await supabase
+        .from('movimientos_inventario')
+        .select('cantidad, producto_id, productos_inventario(nombre, precio_venta, porcentaje_impuesto)')
+        .eq('historial_id', historialId)
+        .eq('tipo_movimiento', 'Salida Uso Interno');
+
+      if (movimientos) {
+        movimientos.forEach(mov => {
+          // --- CORRECCIÓN AQUÍ ---
+          // Verificamos que 'productos_inventario' sea un array y no esté vacío
+          const productoInfo = mov.productos_inventario && !Array.isArray(mov.productos_inventario) 
+            ? mov.productos_inventario 
+            : Array.isArray(mov.productos_inventario) && mov.productos_inventario.length > 0 
+            ? mov.productos_inventario[0] 
+            : null;
+
+          if (productoInfo) {
+            items.push({
+              id_temporal: crypto.randomUUID(),
+              descripcion: productoInfo.nombre,
+              cantidad: mov.cantidad.toString(),
+              precio_unitario: (productoInfo.precio_venta ?? 0).toString(),
+              porcentaje_impuesto_item: (productoInfo.porcentaje_impuesto ?? 0).toString() as ImpuestoItemValue,
+              tipo_origen_item: 'producto',
+              producto_inventario_id: mov.producto_id,
+              procedimiento_id: null,
+              lote_id: null,
+            });
+          }
+          // --- FIN DE LA CORRECCIÓN ---
+        });
+      }
+      
+      initialDataForForm = {
+        propietario_id: historial.pacientes?.propietarios?.id,
+        paciente_id: historial.paciente_id,
+        fecha_emision: format(new Date(), 'yyyy-MM-dd'),
+        estado: 'Borrador',
+        items: items,
       };
-  });
-
-  // 3. Obtener Procedimientos del Catálogo
-  // Asegúrate que tu tabla 'procedimientos' tenga 'precio' y 'porcentaje_impuesto'
-  const { data: procedimientosData, error: procedimientosError } = await supabase
-    .from('procedimientos')
-    .select('id, nombre, precio, porcentaje_impuesto') 
-    .order('nombre', { ascending: true });
-  if (procedimientosError) console.error("Error fetching procedimientos:", procedimientosError);
-  const procedimientosParaFactura: ProcedimientoParaFactura[] = (procedimientosData || []).map(p => ({
-    id: p.id,
-    nombre: p.nombre,
-    precio: p.precio || 0, // Precio base
-    porcentaje_impuesto: p.porcentaje_impuesto || 0, // % de impuesto
-  }));
-
-  // 4. Obtener Productos del Inventario (Catálogo)
-  // Asegúrate que tu tabla 'productos_inventario' tenga 'precio_venta' y 'porcentaje_impuesto'
-  const { data: productosInvData, error: productosInvError } = await supabase
-    .from('productos_inventario') 
-    .select('id, nombre, precio_venta, porcentaje_impuesto, requiere_lote') 
-    .order('nombre', { ascending: true });
-  if (productosInvError) console.error("Error fetching productos inventario:", productosInvError);
-  const productosParaFactura: ProductoInventarioParaFactura[] = (productosInvData || []).map(p => ({
-    id: p.id,
-    nombre: p.nombre,
-    precio_venta: p.precio_venta || 0, // Precio base
-    porcentaje_impuesto: p.porcentaje_impuesto || 0, // % de impuesto
-    requiere_lote: p.requiere_lote || false,
-  }));
+    } else {
+        console.error(`Error: No se encontró el historial con ID: ${historialId}`);
+    }
+  }
 
   return (
     <div className="container mx-auto py-10 px-4 md:px-6">
@@ -86,8 +147,9 @@ export default async function NuevaFacturaPage() {
       <FacturaForm 
         propietarios={propietariosParaSelector}
         pacientes={pacientesParaSelector}
-        procedimientosDisponibles={procedimientosParaFactura}
-        productosDisponibles={productosParaFactura}
+        procedimientosDisponibles={procedimientosDisponibles}
+        productosDisponibles={productosDisponibles}
+        initialData={initialDataForForm}
       />
     </div>
   );
