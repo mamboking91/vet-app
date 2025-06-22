@@ -28,6 +28,7 @@ import {
   Euro,
   Calculator,
   BarChart2,
+  Store, // <-- Importamos el nuevo icono
 } from "lucide-react"
 import type { ProductoConStock } from "./types"
 import { eliminarProductoCatalogo } from "./actions"
@@ -185,6 +186,14 @@ export default function ProductosInventarioTable({ productos }: ProductosInventa
                             Lotes
                           </Badge>
                         )}
+                        {/* --- NUEVO INDICADOR DE TIENDA --- */}
+                        {producto.en_tienda && (
+                            <Badge variant="outline" className="text-xs bg-pink-100 text-pink-700 border-pink-300">
+                                <Store className="h-3 w-3 mr-1" />
+                                En tienda
+                            </Badge>
+                        )}
+                        {/* ----------------------------- */}
                       </div>
                     </div>
                   </Link>

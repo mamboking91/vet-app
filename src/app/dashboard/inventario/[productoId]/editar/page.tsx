@@ -9,9 +9,7 @@ import { ChevronLeft } from 'lucide-react';
 import ProductoCatalogoForm from '../../nuevo/ProductoCatalogoForm'; 
 import type { 
   ProductoCatalogoFormData, 
-  UnidadMedidaInventarioValue,
-  ImpuestoItemValue,
-  ProductoCatalogo as ProductoCatalogoDB // Tipo para datos de la BD
+  ProductoCatalogo as ProductoCatalogoDB
 } from '../../types';
 
 interface EditarProductoCatalogoPageProps {
@@ -32,60 +30,65 @@ export default async function EditarProductoCatalogoPage({ params }: EditarProdu
     notFound();
   }
 
-  // 1. Obtener datos del producto del catálogo
+  // 1. Obtener todos los datos del producto del catálogo
   const { data: producto, error: productoDbError } = await supabase
     .from('productos_inventario')
-    .select('id, nombre, descripcion, codigo_producto, unidad, stock_minimo, precio_compra, precio_venta, porcentaje_impuesto, requiere_lote, notas_internas')
+    .select('*') // Usamos '*' para asegurar que traemos todos los campos
     .eq('id', productoId)
-    .single<ProductoCatalogoDB>(); // Usamos el tipo que refleja la tabla
+    .single<ProductoCatalogoDB>();
 
   if (productoDbError || !producto) {
     console.error(`[EditarProductoCatalogoPage] Error fetching producto con ID ${productoId} o no encontrado:`, productoDbError);
     notFound();
   }
   
-  let stockDelLoteGenerico = '0'; // Default como string para el formulario
+  let stockDelLoteGenerico = '0';
 
   // 2. Si el producto NO requiere lote, obtener el stock de su lote genérico
   if (producto.requiere_lote === false) {
-    const numeroLoteGenerico = `STOCK_UNICO_${producto.id.substring(0, 8)}`; // Debe coincidir con la acción
+    const numeroLoteGenerico = `STOCK_UNICO_${producto.id.substring(0, 8)}`;
     const { data: loteGenerico, error: loteError } = await supabase
       .from('lotes_producto')
       .select('stock_lote')
       .eq('producto_id', producto.id)
       .eq('numero_lote', numeroLoteGenerico)
-      .maybeSingle(); // Usamos maybeSingle ya que podría no existir si se creó antes de esta lógica
+      .maybeSingle();
 
     if (loteError) {
       console.warn(`[EditarProductoCatalogoPage] Error fetching lote genérico para producto ${productoId}:`, loteError.message);
-      // No hacemos notFound(), el formulario puede mostrar 0 si no se encuentra el lote genérico
     }
     if (loteGenerico && loteGenerico.stock_lote !== null) {
       stockDelLoteGenerico = loteGenerico.stock_lote.toString();
     }
   }
   
-  // Preparamos initialData para ProductoCatalogoForm
+  // 3. Preparamos initialData para ProductoCatalogoForm
+  // CORRECCIÓN: Convertimos explícitamente TODOS los campos que pueden ser `null` a un valor por defecto.
   const initialDataForForm: Partial<ProductoCatalogoFormData> = {
-    nombre: producto.nombre || '', 
-    descripcion: producto.descripcion || '',
-    codigo_producto: producto.codigo_producto || '',
-    unidad: producto.unidad || 'Unidad', 
+    ...producto,
+    // --- Conversiones para evitar error de tipo `null` ---
+    descripcion: producto.descripcion ?? '',
+    codigo_producto: producto.codigo_producto ?? '',
+    notas_internas: producto.notas_internas ?? '',
+    descripcion_publica: producto.descripcion_publica ?? '',
+    unidad: producto.unidad ?? '', // Corregido: `null` se convierte en `''`
+    
+    // --- Conversiones para campos numéricos a string ---
     stock_minimo: producto.stock_minimo?.toString() || '0',
     precio_compra: producto.precio_compra?.toString() || '',
-    precio_venta: producto.precio_venta?.toString() || '', // Precio Base
-    porcentaje_impuesto: producto.porcentaje_impuesto?.toString() as ImpuestoItemValue || "0",
-    requiere_lote: producto.requiere_lote,
-    notas_internas: producto.notas_internas || '',
-    // Añadimos el stock del lote genérico a initialData si el producto no requiere lote
+    precio_venta: producto.precio_venta?.toString() || '',
+    porcentaje_impuesto: producto.porcentaje_impuesto?.toString(),
     stock_no_lote_valor: !producto.requiere_lote ? stockDelLoteGenerico : undefined,
+
+    // Aseguramos que los campos de array sean arrays vacíos si son null en la DB
+    imagenes: producto.imagenes || [],
+    categorias_tienda: producto.categorias_tienda || [],
   };
 
   return (
     <div className="container mx-auto py-10 px-4 md:px-6">
       <div className="flex items-center mb-6">
         <Button variant="outline" size="icon" asChild className="mr-4">
-          {/* Enlaza de vuelta a la página de detalle del producto */}
           <Link href={`/dashboard/inventario/${productoId}`}>
             <ChevronLeft className="h-4 w-4" />
           </Link>
@@ -99,3 +102,4 @@ export default async function EditarProductoCatalogoPage({ params }: EditarProdu
     </div>
   );
 }
+

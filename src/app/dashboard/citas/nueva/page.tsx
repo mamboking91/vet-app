@@ -1,4 +1,4 @@
-// app/dashboard/citas/nueva/page.tsx
+// src/app/dashboard/citas/nueva/page.tsx
 import React from 'react';
 import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
@@ -6,10 +6,8 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { ChevronLeft } from 'lucide-react';
 import CitaForm from './CitaForm';
-// Importa PacienteParaSelector desde el archivo centralizado de tipos
-import type { PacienteParaSelector } from '../types'; 
-// Ya no necesitamos importar tiposDeCitaOpciones o estadosDeCitaOpciones aquí
-// si CitaForm.tsx los importa directamente desde '../types'.
+// --- CORRECCIÓN: Importamos el tipo correcto para pasar los datos al formulario ---
+import type { PacienteConPropietario } from '../types'; 
 
 export const dynamic = 'force-dynamic';
 
@@ -17,7 +15,7 @@ export default async function NuevaCitaPage() {
   const cookieStore = cookies();
   const supabase = createServerComponentClient({ cookies: () => cookieStore });
 
-  // Obtener la lista de pacientes con sus propietarios para el selector
+  // Realizamos una única consulta para obtener los pacientes y sus propietarios anidados
   const { data: pacientesData, error: pacientesError } = await supabase
     .from('pacientes')
     .select(`
@@ -29,22 +27,23 @@ export default async function NuevaCitaPage() {
     .order('nombre', { ascending: true });
 
   if (pacientesError) {
-    console.error("[NuevaCitaPage] Error fetching pacientes para select:", pacientesError);
-    // Considera mostrar un mensaje de error o un estado vacío elegante para el selector
+    console.error("[NuevaCitaPage] Error fetching pacientes con propietarios:", pacientesError);
   }
 
-  const pacientesParaSelector: PacienteParaSelector[] = (pacientesData || []).map(p => {
-    // Accedemos a propietarios como un array, según el error de TS anterior
-    const propietarioInfo = (p.propietarios && Array.isArray(p.propietarios) && p.propietarios.length > 0)
-                              ? p.propietarios[0]
-                              : null;
-    const propietarioNombre = propietarioInfo?.nombre_completo || 'Propietario Desconocido';
-    const especieInfo = p.especie ? `(${p.especie})` : '';
-    return {
-      id: p.id,
-      nombre_display: `${p.nombre} ${especieInfo} - Dueño: ${propietarioNombre}`,
-    };
-  });
+  // --- CORRECCIÓN: Procesamos los datos manejando propietarios como array ---
+  const pacientesParaSelector: PacienteConPropietario[] = (pacientesData || [])
+    .map(p => {
+      // Supabase devuelve propietarios como un array, tomamos el primer elemento
+      const propietario = Array.isArray(p.propietarios) ? p.propietarios[0] : p.propietarios;
+      return {
+        paciente_id: p.id,
+        paciente_nombre: `${p.nombre} (${p.especie || 'N/A'})`,
+        propietario_id: propietario?.id || '',
+        propietario_nombre: propietario?.nombre_completo || 'Propietario Desconocido',
+      };
+    })
+    // Nos aseguramos de que solo se puedan seleccionar pacientes que tienen un propietario asignado
+    .filter(p => p.propietario_id && p.propietario_nombre !== 'Propietario Desconocido'); 
 
   return (
     <div className="container mx-auto py-10 px-4 md:px-6">
@@ -58,9 +57,6 @@ export default async function NuevaCitaPage() {
       </div>
       <CitaForm 
         pacientes={pacientesParaSelector}
-        // Ya no pasamos tiposDeCita ni estadosDeCita como props
-        // si CitaForm.tsx los importa directamente desde '../types.ts'
-        // (lo cual hicimos en la última versión de CitaForm.tsx)
       />
     </div>
   );

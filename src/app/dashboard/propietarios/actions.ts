@@ -1,4 +1,3 @@
-// app/dashboard/propietarios/actions.ts
 "use server";
 
 import { createServerActionClient } from '@supabase/auth-helpers-nextjs';
@@ -6,14 +5,13 @@ import { cookies } from 'next/headers';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
-// Esquema de Zod para la validación de datos del propietario
-// (usado tanto para creación como para actualización con .partial())
+// Esquema de Zod basado en tu versión, que será la "fuente de la verdad".
 const PropietarioSchemaBase = z.object({
   nombre_completo: z.string().min(3, "El nombre completo es requerido y debe tener al menos 3 caracteres."),
   email: z.string().email("Email inválido.").optional().or(z.literal('')).transform(val => val === '' ? undefined : val),
   telefono: z.string().optional().transform(val => val === '' ? undefined : val),
   direccion: z.string().optional().transform(val => val === '' ? undefined : val),
-  notas: z.string().optional().transform(val => val === '' ? undefined : val), // Campo de notas
+  notas: z.string().optional().transform(val => val === '' ? undefined : val),
 });
 
 
@@ -33,14 +31,12 @@ export async function agregarPropietario(formData: FormData) {
       email: formData.get('email'),
       telefono: formData.get('telefono'),
       direccion: formData.get('direccion'),
-      notas: formData.get('notas'), // Usamos 'notas'
+      notas: formData.get('notas'),
     };
 
-    // Usamos el esquema base directamente para la creación (todos los campos opcionales excepto nombre_completo)
     const validatedFields = PropietarioSchemaBase.safeParse(rawFormData);
 
     if (!validatedFields.success) {
-      console.error("Error de validación (agregarPropietario):", validatedFields.error.flatten().fieldErrors);
       return {
         success: false,
         error: { message: "Error de validación. Por favor, revisa los campos.", errors: validatedFields.error.flatten().fieldErrors },
@@ -52,8 +48,7 @@ export async function agregarPropietario(formData: FormData) {
       email: validatedFields.data.email ?? null,
       telefono: validatedFields.data.telefono ?? null,
       direccion: validatedFields.data.direccion ?? null,
-      notas: validatedFields.data.notas ?? null, // Usamos 'notas'
-      // created_at y updated_at serán manejados por la BD si tienen DEFAULT NOW() y triggers
+      notas: validatedFields.data.notas ?? null,
     };
 
     const { data, error: dbError } = await supabase
@@ -63,9 +58,7 @@ export async function agregarPropietario(formData: FormData) {
       .single();
 
     if (dbError) {
-      console.error('Error al insertar propietario:', dbError);
-      // Manejar error de unicidad si 'nombre_completo' o 'email' deben ser únicos
-      if (dbError.code === '23505') { // Error de violación de unicidad
+      if (dbError.code === '23505') {
           let fieldMessage = "Un campo único ya existe.";
           if (dbError.message.includes('nombre_completo')) fieldMessage = "Ya existe un propietario con este nombre.";
           if (dbError.message.includes('email')) fieldMessage = "Este email ya está registrado.";
@@ -78,7 +71,6 @@ export async function agregarPropietario(formData: FormData) {
     return { success: true, data, message: "Propietario añadido correctamente." };
 
   } catch (e: any) {
-    console.error("Error inesperado en agregarPropietario:", e);
     return { success: false, error: { message: `Error inesperado: ${e.message}` } };
   }
 }
@@ -103,48 +95,25 @@ export async function actualizarPropietario(id: string, formData: FormData) {
       email: formData.get('email'),
       telefono: formData.get('telefono'),
       direccion: formData.get('direccion'),
-      notas: formData.get('notas'), // Usamos 'notas'
+      notas: formData.get('notas'),
     };
     
-    // Usamos .partial() para que solo se validen y actualicen los campos enviados
     const validatedFields = PropietarioSchemaBase.partial().safeParse(rawFormData);
 
     if (!validatedFields.success) {
-      console.error("Error de validación (actualizarPropietario):", validatedFields.error.flatten().fieldErrors);
       return {
         success: false,
         error: { message: "Error de validación al actualizar.", errors: validatedFields.error.flatten().fieldErrors },
       };
     }
 
-    const dataToUpdate: { [key: string]: any } = {};
-    let hasChanges = false;
-
-    // Construir el objeto de actualización solo con los campos que tienen valor y fueron validados
-    (Object.keys(validatedFields.data) as Array<keyof typeof validatedFields.data>).forEach(key => {
-        if (validatedFields.data[key] !== undefined) { // Solo incluir si el campo fue validado (no undefined)
-            dataToUpdate[key] = validatedFields.data[key] ?? null; // Convertir undefined (de Zod optional) a null para la BD
-            hasChanges = true;
-        }
-    });
-    
-    if (!hasChanges) {
-      return { success: true, message: "No se proporcionaron datos diferentes para actualizar.", data: null };
-    }
-
-    // El trigger de la BD debería manejar updated_at
-    // Si no, añade: dataToUpdate.updated_at = new Date().toISOString();
-
-    const { data, error: dbError } = await supabase
+    const { error: dbError } = await supabase
       .from('propietarios')
-      .update(dataToUpdate)
+      .update(validatedFields.data)
       .eq('id', id)
-      .select()
-      .single();
 
     if (dbError) {
-      console.error('Error al actualizar propietario:', dbError);
-      if (dbError.code === '23505') { // Error de violación de unicidad
+      if (dbError.code === '23505') {
           let fieldMessage = "Un campo único ya existe.";
           if (dbError.message.includes('nombre_completo')) fieldMessage = "Ya existe un propietario con este nombre.";
           if (dbError.message.includes('email')) fieldMessage = "Este email ya está registrado.";
@@ -154,17 +123,16 @@ export async function actualizarPropietario(id: string, formData: FormData) {
     }
 
     revalidatePath('/dashboard/propietarios');
-    revalidatePath(`/dashboard/propietarios/${id}/editar`); // Revalida la página de edición
-    revalidatePath(`/dashboard/propietarios/${id}`); // Revalida la página de detalle si existe
-    return { success: true, data, message: "Propietario actualizado correctamente." };
+    revalidatePath(`/dashboard/propietarios/${id}/editar`);
+    revalidatePath(`/dashboard/propietarios/${id}`);
+    return { success: true, message: "Propietario actualizado correctamente." };
 
   } catch (e: any) {
-    console.error("Error inesperado en actualizarPropietario:", e);
     return { success: false, error: { message: `Error inesperado: ${e.message}` } };
   }
 }
 
-// --- FUNCIÓN ELIMINAR PROPIETARIO ---
+// --- FUNCIÓN ELIMINAR PROPIETARIO (Versión final y robusta) ---
 export async function eliminarPropietario(id: string) {
   try {
     const cookieStore = cookies();
@@ -179,29 +147,59 @@ export async function eliminarPropietario(id: string) {
         return { success: false, error: { message: "ID de propietario inválido." }};
     }
   
-    // Considerar restricciones de clave foránea (pacientes asociados)
-    const { error: dbError, count } = await supabase
+    // 1. Buscamos proactivamente si hay pacientes asociados
+    const { data: pacientes, error: pacientesError } = await supabase
+        .from('pacientes')
+        .select('nombre')
+        .eq('propietario_id', id);
+
+    if (pacientesError) {
+        return { success: false, error: { message: `Error al verificar pacientes: ${pacientesError.message}` } };
+    }
+
+    if (pacientes && pacientes.length > 0) {
+        const nombresPacientes = pacientes.map(p => p.nombre).join(', ');
+        return { 
+            success: false, 
+            error: { 
+                message: `No se puede eliminar. Pacientes asociados: ${nombresPacientes}. Primero debe eliminar o reasignar estos pacientes. Nota: Un paciente no puede ser eliminado si tiene historial médico.` 
+            } 
+        };
+    }
+
+    // 2. Buscamos proactivamente si hay facturas asociadas
+    const { data: facturas, error: facturasError } = await supabase
+        .from('facturas')
+        .select('numero_factura', { count: 'exact', head: true }) // Solo necesitamos saber si existe alguna
+        .eq('propietario_id', id);
+        
+    if (facturasError) {
+        return { success: false, error: { message: `Error al verificar facturas: ${facturasError.message}` }};
+    }
+
+    if (facturas) {
+        return {
+            success: false,
+            error: {
+                message: "No se puede eliminar el propietario porque tiene facturas asociadas. Considere desactivar al propietario en lugar de eliminarlo para mantener la integridad de los registros contables."
+            }
+        };
+    }
+  
+    // 3. Si no hay pacientes ni facturas, procedemos con la eliminación.
+    const { error: dbError } = await supabase
       .from('propietarios')
-      .delete({ count: 'exact' }) // Para saber si se eliminó algo
+      .delete()
       .eq('id', id); 
   
     if (dbError) {
-      console.error('Error al eliminar propietario:', dbError);
-      if (dbError.code === '23503') { // Foreign key violation
-        return { success: false, error: { message: "No se puede eliminar el propietario porque tiene pacientes asociados. Elimine o reasigne los pacientes primero." } };
-      }
       return { success: false, error: { message: `Error de base de datos al eliminar: ${dbError.message}` } };
-    }
-
-    if (count === 0) {
-        return { success: false, error: { message: "El propietario no se encontró o no se pudo eliminar." } };
     }
   
     revalidatePath('/dashboard/propietarios');
     return { success: true, message: "Propietario eliminado correctamente." };
 
   } catch (e: any) {
-    console.error("Error inesperado en eliminarPropietario:", e);
-    return { success: false, error: { message: `Error inesperado: ${e.message}` } };
+    return { success: false, error: { message: `Error inesperado en eliminarPropietario: ${e.message}` } };
   }
 }

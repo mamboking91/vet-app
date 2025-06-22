@@ -21,9 +21,28 @@ import {
 import { es } from "date-fns/locale"
 
 import CalendarioMensualCitas from "./CalendarioMensualCitas"
-import type { CitaConDetalles, WeekInMonth, DayInMonth, CitaConArraysAnidados } from "./types"
+import type { CitaConDetalles, WeekInMonth, DayInMonth } from "./types"
 
 export const dynamic = "force-dynamic"
+
+// Definimos el tipo local para los datos crudos de Supabase
+type CitaConArraysAnidados = {
+  id: string
+  fecha_hora_inicio: string
+  fecha_hora_fin: string | null
+  duracion_estimada_minutos: number | null
+  motivo: string | null
+  tipo: string | null
+  estado: string | null
+  pacientes: Array<{
+    id: string
+    nombre: string
+    propietarios: Array<{
+      id: string
+      nombre_completo: string
+    }>
+  }> | null
+}
 
 interface CitasPageProps {
   searchParams?: {
