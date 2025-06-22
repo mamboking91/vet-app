@@ -32,6 +32,9 @@ export type PropietarioFormData = {
     email: string;
     telefono: string;
     direccion: string;
+    localidad: string | null;
+    provincia: string | null;
+    codigo_postal: string | null;
     notas: string;
 };
   

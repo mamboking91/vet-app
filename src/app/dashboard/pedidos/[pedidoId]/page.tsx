@@ -1,3 +1,4 @@
+// app/dashboard/pedidos/[pedidoId]/page.tsx
 import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { notFound } from 'next/navigation';
@@ -9,8 +10,8 @@ import { Badge } from '@/components/ui/badge';
 import { ChevronLeft, User, Ghost, Phone, Mail, FileText } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import type { Pedido, DireccionEnvio, EstadoPedido } from '../types';
-import UpdateOrderStatus from '../UpdateOrderStatus';
+import type { Pedido, DireccionEnvio, EstadoPedido } from '@/app/dashboard/pedidos/types';
+import UpdateOrderStatus from '@/app/dashboard/pedidos/UpdateOrderStatus';
 
 // Tipos de datos para el pedido
 type ItemPedidoConProducto = {
@@ -71,8 +72,9 @@ export default async function PedidoDetallePage({ params }: PedidoDetallePagePro
     notFound();
   }
   
-  const direccion = order.direccion_envio;
-  // CORRECCIÓN: Lógica más robusta para obtener el nombre del cliente
+  // CORRECCIÓN: Se añade un objeto por defecto para 'direccion_envio' si es null
+  const direccion = order.direccion_envio || {};
+  
   const nombreCliente = order.propietarios?.nombre_completo 
                       || direccion.nombre_completo 
                       || `${direccion.nombre || ''} ${direccion.apellidos || ''}`.trim()
@@ -150,16 +152,17 @@ export default async function PedidoDetallePage({ params }: PedidoDetallePagePro
                     {order.propietario_id && <Button asChild size="sm" variant="outline"><Link href={`/dashboard/propietarios/${order.propietario_id}`}>Ver Ficha</Link></Button>}
                 </div>
                 <div className="flex items-center gap-3"><Mail className="h-4 w-4 text-gray-400"/><a href={`mailto:${order.email_cliente}`} className="text-blue-600 hover:underline">{order.email_cliente}</a></div>
-                {direccion.telefono && <div className="flex items-center gap-3"><Phone className="h-4 w-4 text-gray-400"/><span>{direccion.telefono}</span></div>}
+                {/* CORRECCIÓN: Se usa encadenamiento opcional para acceder a 'telefono' de forma segura */}
+                {direccion?.telefono && <div className="flex items-center gap-3"><Phone className="h-4 w-4 text-gray-400"/><span>{direccion.telefono}</span></div>}
             </CardContent>
           </Card>
            <Card>
             <CardHeader><CardTitle>Dirección de Envío</CardTitle></CardHeader>
             <CardContent>
                 <address className="not-italic text-sm text-gray-600">
-                    {direccion.direccion}<br/>
-                    {direccion.codigo_postal} {direccion.localidad}<br/>
-                    {direccion.provincia}
+                    {direccion?.direccion}<br/>
+                    {direccion?.codigo_postal} {direccion?.localidad}<br/>
+                    {direccion?.provincia}
                 </address>
             </CardContent>
           </Card>
