@@ -1,4 +1,3 @@
-// app/dashboard/layout.tsx
 "use client";
 
 import React, { useEffect } from 'react';
@@ -8,7 +7,8 @@ import { supabase } from '@/lib/supabaseClient';
 import { Button } from '@/components/ui/button';
 import { 
   LayoutDashboard, Users, Dog, ClipboardList, 
-  CalendarDays, Archive, FileText, Wrench, Settings, LogOut 
+  CalendarDays, Archive, FileText, Wrench, Settings, LogOut,
+  ShoppingCart // <-- 1. Importamos el nuevo icono
 } from 'lucide-react';
 
 interface NavItem {
@@ -33,12 +33,15 @@ export default function DashboardLayout({
     { href: "/dashboard/procedimientos", label: "Procedimientos", icon: Wrench },
     { href: "/dashboard/citas", label: "Citas", icon: CalendarDays },
     { href: "/dashboard/facturacion", label: "Facturación", icon: FileText },
+    // --- 2. AÑADIMOS EL NUEVO ENLACE A PEDIDOS ---
+    { href: "/dashboard/pedidos", label: "Pedidos", icon: ShoppingCart },
+    // ---------------------------------------------
     { href: "/dashboard/inventario", label: "Inventario", icon: Archive },
     { href: "/dashboard/informes", label: "Informes", icon: FileText, disabled: true },
   ];
   
   const settingsNavItems: NavItem[] = [
-    { href: "/dashboard/configuracion", label: "Configuración", icon: Settings }, // Enlazará a la página hub de config
+    { href: "/dashboard/configuracion", label: "Configuración", icon: Settings },
   ];
 
   useEffect(() => {
@@ -66,7 +69,7 @@ export default function DashboardLayout({
   return (
     <div className="flex h-screen bg-slate-50 dark:bg-slate-950">
       <aside 
-        className="w-64 bg-gray-900 text-gray-200 p-4 flex flex-col shadow-lg print:hidden" // <--- AÑADIDO print:hidden
+        className="w-64 bg-gray-900 text-gray-200 p-4 flex flex-col shadow-lg print:hidden"
       >
         <div className="mb-8 px-2">
           <Link href="/dashboard" className="text-2xl font-bold text-white hover:text-gray-300 transition-colors">
@@ -100,7 +103,7 @@ export default function DashboardLayout({
         
         <div className="mt-auto pt-4 border-t border-gray-700 space-y-1">
           {settingsNavItems.map((item) => {
-             const isActive = pathname.startsWith(item.href); // Para que Configuración se active si estás en subrutas
+             const isActive = pathname.startsWith(item.href);
             return (
               <Link
                 key={item.label}
@@ -131,7 +134,7 @@ export default function DashboardLayout({
           </Button>
         </div>
       </aside>
-      <main className="flex-1 p-6 md:p-8 lg:p-10 overflow-y-auto bg-slate-100 dark:bg-slate-900 print:bg-white"> {/* Fondo blanco para impresión del main */}
+      <main className="flex-1 p-6 md:p-8 lg:p-10 overflow-y-auto bg-slate-100 dark:bg-slate-900 print:bg-white">
         {children}
       </main>
     </div>
