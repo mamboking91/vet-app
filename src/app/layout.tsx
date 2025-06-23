@@ -103,7 +103,7 @@ export default function RootLayout({
               <PublicFooter />
             </div>
           )}
-          <Toaster richColors position="top-right" />
+          <Toaster richColors position="bottom-right" />
         </CartProvider>
       </body>
     </html>
