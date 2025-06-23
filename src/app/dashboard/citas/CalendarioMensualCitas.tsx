@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { format, parseISO } from "date-fns"
 import { es } from "date-fns/locale"
 import { cn } from "@/lib/utils"
-import type { WeekInMonth, DayInMonth } from "./types"
+import type { WeekInMonth, DayInMonth, CitaConDetallesAnidados } from "./types"
 import { ClockIcon, UserIcon, Stethoscope } from "lucide-react"
 
 interface CalendarioMensualCitasProps {
@@ -13,29 +13,10 @@ interface CalendarioMensualCitasProps {
   currentDisplayMonth: Date
 }
 
-const getEstadoBadgeVariant = (
-  estado?: string,
-): "default" | "destructive" | "outline" | "secondary" | "success" | "warning" => {
-  switch (estado?.toLowerCase()) {
-    case "programada":
-      return "outline"
-    case "confirmada":
-      return "default"
-    case "completada":
-      return "success"
-    case "cancelada por clínica":
-    case "cancelada por cliente":
-    case "no asistió":
-      return "destructive"
-    case "reprogramada":
-      return "warning"
-    default:
-      return "secondary"
-  }
-}
-
 const getEstadoColors = (estado?: string) => {
   switch (estado?.toLowerCase()) {
+    case "pendiente de confirmación":
+        return "bg-gradient-to-r from-yellow-50 to-amber-100 dark:from-yellow-950/30 dark:to-amber-900/40 text-yellow-700 dark:text-yellow-300 border-l-4 border-l-yellow-400"
     case "programada":
       return "bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-950/30 dark:to-blue-900/40 text-blue-700 dark:text-blue-300 border-l-4 border-l-blue-400"
     case "confirmada":
@@ -82,7 +63,6 @@ export default function CalendarioMensualCitas({ semanas, currentDisplayMonth }:
 
   return (
     <div className="bg-white dark:bg-slate-900 rounded-xl shadow-lg border border-gray-200 dark:border-slate-700 overflow-hidden">
-      {/* Encabezados de los días de la semana */}
       <div className="grid grid-cols-7 bg-gradient-to-r from-blue-600 to-indigo-600 dark:from-blue-800 dark:to-indigo-800">
         {diasSemanaHeaders.map((header) => (
           <div key={header} className="p-4 text-center font-semibold text-sm text-white">
@@ -91,7 +71,6 @@ export default function CalendarioMensualCitas({ semanas, currentDisplayMonth }:
         ))}
       </div>
 
-      {/* Días del mes */}
       {semanas.map((semana, indexSemana) => (
         <div key={indexSemana} className="grid grid-cols-7 min-h-[140px] md:min-h-[180px]">
           {semana.map((dia) => (

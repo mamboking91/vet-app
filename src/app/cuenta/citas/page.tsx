@@ -1,17 +1,20 @@
 import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
+import Link from 'next/link'; // <-- CORRECCIÓN: Se añade la importación que faltaba
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { CalendarClock, CheckCircle, Clock } from 'lucide-react';
-// Importamos el tipo correcto que me proporcionaste
+import { CalendarClock, CheckCircle, Clock, PlusCircle } from 'lucide-react';
 import type { CitaConDetallesAnidados } from '@/app/dashboard/citas/types';
+import { Button } from '@/components/ui/button';
 
 export const dynamic = 'force-dynamic';
 
-function CitaCard({ cita }: { cita: CitaConDetallesAnidados }) {
+type CitaConPaciente = CitaConDetallesAnidados; // Usamos el tipo directamente
+
+function CitaCard({ cita }: { cita: CitaConPaciente }) {
     const fechaCita = new Date(cita.fecha_hora_inicio);
     const esPasada = fechaCita < new Date();
 
@@ -45,7 +48,6 @@ export default async function MisCitasPage() {
     redirect('/login');
   }
 
-  // Obtenemos los IDs de las mascotas del usuario
   const { data: mascotasUsuario } = await supabase
     .from('pacientes')
     .select('id')
@@ -53,34 +55,41 @@ export default async function MisCitasPage() {
 
   const mascotaIds = mascotasUsuario?.map(m => m.id) || [];
 
-  let citas: CitaConDetallesAnidados[] = [];
+  let citas: CitaConPaciente[] = [];
   if (mascotaIds.length > 0) {
       const { data, error } = await supabase
         .from('citas')
         .select(`*, pacientes (nombre)`)
         .in('paciente_id', mascotaIds)
         .order('fecha_hora_inicio', { ascending: false });
-      if(data) citas = data;
+      if(data) citas = data as CitaConPaciente[];
   }
 
   const ahora = new Date();
   const proximasCitas = citas
     .filter(c => new Date(c.fecha_hora_inicio) >= ahora)
     .sort((a,b) => new Date(a.fecha_hora_inicio).getTime() - new Date(b.fecha_hora_inicio).getTime());
-
+  
   const citasPasadas = citas.filter(c => new Date(c.fecha_hora_inicio) < ahora);
-
 
   return (
     <div className="space-y-8">
         <Card>
             <CardHeader>
-                <div className="flex items-center gap-3">
-                    <Clock className="h-6 w-6 text-blue-600"/>
-                    <div>
-                        <CardTitle>Próximas Citas</CardTitle>
-                        <CardDescription>Tus siguientes visitas programadas a la clínica.</CardDescription>
+                <div className="flex justify-between items-start">
+                    <div className="flex items-center gap-3">
+                        <Clock className="h-6 w-6 text-blue-600"/>
+                        <div>
+                            <CardTitle>Próximas Citas</CardTitle>
+                            <CardDescription>Tus siguientes visitas programadas a la clínica.</CardDescription>
+                        </div>
                     </div>
+                    <Button asChild>
+                        <Link href="/cuenta/citas/nueva">
+                            <PlusCircle className="mr-2 h-4 w-4" />
+                            Solicitar Cita
+                        </Link>
+                    </Button>
                 </div>
             </CardHeader>
             <CardContent className="p-0">

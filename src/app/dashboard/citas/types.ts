@@ -17,6 +17,7 @@ export const tiposDeCitaOpciones = [
 export type TipoCitaValue = (typeof tiposDeCitaOpciones)[number]["value"]
 
 export const estadosDeCitaOpciones = [
+  "Pendiente de Confirmación", 
   "Programada",
   "Confirmada",
   "Cancelada por Clínica",
