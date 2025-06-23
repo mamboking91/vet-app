@@ -1,4 +1,4 @@
-"use client"; 
+"use client";
 
 import type { Metadata } from "next";
 import localFont from 'next/font/local';
@@ -6,7 +6,8 @@ import Link from 'next/link';
 import { ShoppingCart } from 'lucide-react';
 import "./globals.css";
 import { CartProvider, useCart } from '@/context/CartContext';
-import AccountButton from '@/components/ui/AccountButton'; // <-- IMPORTAMOS EL NUEVO BOTÓN
+import AccountButton from '@/components/ui/AccountButton';
+import { Toaster } from "sonner"; // <-- 1. IMPORTAMOS EL TOASTER
 
 const geistSans = localFont({
   src: [
@@ -55,7 +56,6 @@ function PublicHeader() {
                 </span>
               )}
             </Link>
-            {/* --- REEMPLAZAMOS EL LINK ANTIGUO POR EL NUEVO COMPONENTE --- */}
             <AccountButton />
           </div>
         </div>
@@ -86,6 +86,7 @@ function PublicFooter() {
   );
 }
 
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -102,6 +103,8 @@ export default function RootLayout({
             </main>
             <PublicFooter />
           </div>
+          {/* --- 2. AÑADIMOS EL TOASTER AQUÍ --- */}
+          <Toaster richColors position="top-right" />
         </CartProvider>
       </body>
     </html>

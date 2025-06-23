@@ -1,6 +1,5 @@
 import {
     Body,
-    Button,
     Container,
     Head,
     Hr,
@@ -11,6 +10,7 @@ import {
     Text,
     Row,
     Column,
+    Link
   } from "@react-email/components";
   import * as React from "react";
   import { format } from "date-fns";
@@ -38,6 +38,7 @@ import {
     items: Item[];
     total: number;
     logoUrl?: string | null;
+    isNewUser?: boolean;
   }
   
   const main = {
@@ -81,15 +82,14 @@ import {
     items,
     total,
     logoUrl,
+    isNewUser = false,
   }: OrderConfirmationEmailProps) => {
-    // --- CORRECCIÓN AQUÍ ---
-    // Nos aseguramos de tener siempre una URL válida para la imagen.
     const finalLogoUrl = logoUrl || "https://placehold.co/120x50/e2e8f0/e2e8f0?text=Gomera+Mascotas";
   
     return (
       <Html>
         <Head />
-        <Preview>Confirmación de tu pedido en Gomera Mascotas</Preview>
+        <Preview>Confirmación de tu pedido en Gomera Mascotas #{pedidoId.substring(0, 8)}</Preview>
         <Body style={main}>
           <Container style={container}>
             <Section style={box}>
@@ -98,6 +98,18 @@ import {
               <Text style={paragraph}>
                 ¡Gracias por tu compra, {direccionEnvio.nombre_completo}!
               </Text>
+              
+              {isNewUser && (
+                <>
+                  <Text style={paragraph}>
+                    Hemos creado una cuenta para ti para que puedas ver tu historial de pedidos fácilmente. 
+                    Para acceder, ve a nuestra página de inicio de sesión y utiliza la opción "¿Has olvidado tu contraseña?" 
+                    con este mismo correo electrónico para establecer tu contraseña personal.
+                  </Text>
+                  <Hr style={hr} />
+                </>
+              )}
+  
               <Text style={paragraph}>
                 Hemos recibido tu pedido y lo estamos preparando para su envío. Aquí tienes un resumen de tu compra realizada el {format(fechaPedido, "PPP", { locale: es })}.
               </Text>
@@ -105,6 +117,7 @@ import {
                 Número de Pedido: {pedidoId.substring(0, 8).toUpperCase()}
               </Text>
               <Hr style={hr} />
+  
               {items.map((item) => (
                 <Row key={item.nombre}>
                     <Column>
@@ -116,6 +129,7 @@ import {
                 </Row>
               ))}
               <Hr style={hr} />
+  
               <Row>
                 <Column>
                     <Text style={{...paragraph, fontWeight: "bold"}}>Total</Text>
@@ -125,6 +139,7 @@ import {
                 </Column>
               </Row>
               <Hr style={hr} />
+              
               <Section>
                 <Text style={{ ...paragraph, fontWeight: "bold" }}>Dirección de envío</Text>
                 <Text style={paragraph}>

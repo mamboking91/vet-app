@@ -1,14 +1,15 @@
 // app/login/page.tsx
-"use client"; // Esta página necesita ser un Client Component para manejar el estado del formulario e interacciones
+"use client";
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabaseClient'; // Tu cliente Supabase del navegador
+import { supabase } from '@/lib/supabaseClient';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import Link from 'next/link'; // Para el enlace de "¿No tienes cuenta?"
+import Link from 'next/link';
+import { Chrome } from 'lucide-react'; // Importamos el icono de Google
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -17,7 +18,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  const handleLogin = async (event: React.FormEvent<HTMLFormElement>) => {
+  const handleEmailLogin = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setLoading(true);
     setError(null);
@@ -30,14 +31,23 @@ export default function LoginPage() {
     if (signInError) {
       setError(signInError.message);
     } else {
-      // Inicio de sesión exitoso
-      // Redirigir al dashboard u otra página protegida
-      // El onAuthStateChange en un layout superior o middleware se encargará de la redirección basada en la sesión
-      // pero también podemos forzar una navegación aquí.
       router.push('/dashboard');
-      router.refresh(); // Importante para que el servidor re-evalúe el estado de autenticación
+      router.refresh(); 
     }
     setLoading(false);
+  };
+
+  // --- NUEVA FUNCIÓN PARA EL LOGIN CON GOOGLE ---
+  const handleGoogleLogin = async () => {
+    setLoading(true);
+    setError(null);
+    await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${location.origin}/auth/callback`,
+      },
+    });
+    // La redirección a Google maneja el resto, no es necesario setLoading(false)
   };
 
   return (
@@ -50,41 +60,53 @@ export default function LoginPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="tu@email.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                disabled={loading}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">Contraseña</Label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                disabled={loading}
-              />
-            </div>
-            {error && (
-              <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
-            )}
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? 'Iniciando sesión...' : 'Iniciar Sesión'}
+          <div className="space-y-4">
+            {/* --- NUEVO BOTÓN DE GOOGLE --- */}
+            <Button variant="outline" className="w-full" onClick={handleGoogleLogin} disabled={loading}>
+              <Chrome className="mr-2 h-4 w-4" />
+              Continuar con Google
             </Button>
-          </form>
+            
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center"><span className="w-full border-t"></span></div>
+              <div className="relative flex justify-center text-xs uppercase"><span className="bg-card px-2 text-muted-foreground">O con tu email</span></div>
+            </div>
+
+            <form onSubmit={handleEmailLogin} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="tu@email.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  disabled={loading}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="password">Contraseña</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  disabled={loading}
+                />
+              </div>
+              {error && (
+                <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+              )}
+              <Button type="submit" className="w-full" disabled={loading}>
+                {loading ? 'Iniciando sesión...' : 'Iniciar Sesión'}
+              </Button>
+            </form>
+          </div>
         </CardContent>
         <CardFooter className="flex flex-col items-center text-sm">
-          {/* Este es un buen lugar para un enlace a una página de registro si la tuvieras */}
           <p>
             ¿No tienes una cuenta?{' '}
             <Link href="/signup" className="font-medium text-primary hover:underline">

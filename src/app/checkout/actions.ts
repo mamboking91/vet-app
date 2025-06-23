@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { z } from "zod";
 import SumUp from '@sumup/sdk';
 import type { CartItem } from "@/context/CartContext";
+import crypto from 'crypto';
 
 const checkoutSchema = z.object({
   nombre_completo: z.string().min(1, "El nombre es requerido."),
@@ -14,19 +15,47 @@ const checkoutSchema = z.object({
   provincia: z.string().min(1, "La provincia es requerida."),
   codigo_postal: z.string().min(5, "El código postal es inválido."),
   telefono: z.string().optional(),
+  create_account: z.string().optional(),
 });
 
 export async function createSumupCheckout(cartItems: CartItem[], totalAmount: number, formData: FormData) {
   const cookieStore = cookies();
   const supabase = createServerActionClient({ cookies: () => cookieStore });
 
-  const { data: { user } } = await supabase.auth.getUser();
+  let { data: { user } } = await supabase.auth.getUser();
 
   const rawFormData = Object.fromEntries(formData.entries());
   const validatedFields = checkoutSchema.safeParse(rawFormData);
 
   if (!validatedFields.success) {
     return { success: false, error: "Datos de envío inválidos." };
+  }
+  
+  const { create_account, ...checkoutDetails } = validatedFields.data;
+  let isNewUser = false;
+
+  if (create_account === 'on' && !user) {
+    const tempPassword = crypto.randomBytes(16).toString('hex');
+    
+    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+        email: checkoutDetails.email,
+        password: tempPassword,
+        options: {
+            data: {
+                nombre_completo: checkoutDetails.nombre_completo,
+            }
+        }
+    });
+
+    if (signUpError) {
+        if (!signUpError.message.includes("User already registered")) {
+            return { success: false, error: `No se pudo crear la cuenta: ${signUpError.message}` };
+        }
+    } else if (signUpData.user) {
+        isNewUser = true;
+        user = signUpData.user;
+        console.log(`Nueva cuenta creada para el invitado: ${user.email}`);
+    }
   }
 
   if (!cartItems || cartItems.length === 0) {
@@ -58,18 +87,18 @@ export async function createSumupCheckout(cartItems: CartItem[], totalAmount: nu
     const checkoutData = {
       checkout_reference: `VET-APP-${crypto.randomUUID()}`,
       amount: totalAmount,
-      // --- CORRECCIÓN AQUÍ: Usamos 'as const' para asegurar el tipo literal ---
-      currency: 'EUR' as const,
+      currency: 'EUR' as const, // <-- Usamos 'as const' para asegurar el tipo
       merchant_code: process.env.NEXT_PUBLIC_SUMUP_MERCHANT_CODE!,
       customer: {
-        name: validatedFields.data.nombre_completo,
-        email: validatedFields.data.email
+        name: checkoutDetails.nombre_completo,
+        email: checkoutDetails.email
       },
       metadata: {
         customer_id: user?.id || null,
-        email_cliente: validatedFields.data.email,
-        direccion_envio_json: JSON.stringify(validatedFields.data),
-        items_pedido_json: JSON.stringify(itemsParaMetadata)
+        email_cliente: checkoutDetails.email,
+        direccion_envio_json: JSON.stringify(checkoutDetails),
+        items_pedido_json: JSON.stringify(itemsParaMetadata),
+        is_new_user: isNewUser,
       },
       return_url: `${process.env.NEXT_PUBLIC_SITE_URL}/pedido/confirmacion`
     };

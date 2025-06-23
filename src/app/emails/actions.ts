@@ -1,7 +1,7 @@
 "use server";
 
 import { Resend } from 'resend';
-import OrderConfirmationEmail from '@/OrderConfirmationEmail'; // Importa la plantilla
+import { OrderConfirmationEmail } from '@/app/emails/OrderConfirmationEmail'; // Importa la plantilla
 
 // Tipos para los datos que necesita la acción
 interface ItemEmail {
