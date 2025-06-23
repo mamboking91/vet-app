@@ -1,4 +1,4 @@
-"use client";
+"use client"; 
 
 import type { Metadata } from "next";
 import localFont from 'next/font/local';
@@ -7,7 +7,8 @@ import { ShoppingCart } from 'lucide-react';
 import "./globals.css";
 import { CartProvider, useCart } from '@/context/CartContext';
 import AccountButton from '@/components/ui/AccountButton';
-import { Toaster } from "sonner"; // <-- 1. IMPORTAMOS EL TOASTER
+import { Toaster } from "sonner";
+import { usePathname } from 'next/navigation'; // <-- 1. IMPORTAMOS usePathname
 
 const geistSans = localFont({
   src: [
@@ -29,7 +30,6 @@ const geistMono = localFont({
 
 function PublicHeader() {
   const { itemCount } = useCart();
-
   return (
     <header className="bg-white/80 backdrop-blur-md sticky top-0 z-50 border-b border-gray-200">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
@@ -39,22 +39,16 @@ function PublicHeader() {
               Gomera<span className="text-blue-500">Mascotas</span>
             </Link>
           </div>
-          
           <nav className="hidden md:flex md:gap-x-6">
             <Link href="/" className="text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors">Inicio</Link>
             <Link href="/tienda" className="text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors">Tienda</Link>
             <Link href="/nosotros" className="text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors">Nosotros</Link>
             <Link href="/contacto" className="text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors">Contacto</Link>
           </nav>
-          
           <div className="flex items-center gap-x-4">
             <Link href="/carrito" className="relative p-2 rounded-full text-gray-500 hover:text-gray-900 hover:bg-gray-100 transition-colors">
               <ShoppingCart className="h-6 w-6" />
-              {itemCount > 0 && (
-                <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-xs font-medium text-white">
-                  {itemCount}
-                </span>
-              )}
+              {itemCount > 0 && (<span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-xs font-medium text-white">{itemCount}</span>)}
             </Link>
             <AccountButton />
           </div>
@@ -70,40 +64,45 @@ function PublicFooter() {
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="text-center">
           <p className="text-lg font-semibold">Gomera Mascotas</p>
-          <p className="mt-2 text-sm text-gray-400">
-            Cuidando de tus mejores amigos en La Gomera.
-          </p>
+          <p className="mt-2 text-sm text-gray-400">Cuidando de tus mejores amigos en La Gomera.</p>
           <div className="mt-4 flex justify-center gap-x-6">
             <a href="#" className="text-gray-400 hover:text-white transition-colors">Facebook</a>
             <a href="#" className="text-gray-400 hover:text-white transition-colors">Instagram</a>
           </div>
-          <p className="mt-8 text-xs text-gray-500">
-            &copy; {new Date().getFullYear()} Gomera Mascotas. Todos los derechos reservados.
-          </p>
+          <p className="mt-8 text-xs text-gray-500">&copy; {new Date().getFullYear()} Gomera Mascotas. Todos los derechos reservados.</p>
         </div>
       </div>
     </footer>
   );
 }
 
-
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // 2. OBTENEMOS LA RUTA ACTUAL
+  const pathname = usePathname();
+  const isDashboard = pathname.startsWith('/dashboard');
+
   return (
     <html lang="es" className={`${geistSans.variable} ${geistMono.variable}`}>
       <body className="antialiased bg-gray-50 font-sans">
         <CartProvider>
-          <div className="flex flex-col min-h-screen">
-            <PublicHeader />
-            <main className="flex-grow">
-              {children}
-            </main>
-            <PublicFooter />
-          </div>
-          {/* --- 2. AÑADIMOS EL TOASTER AQUÍ --- */}
+          {/* --- 3. LÓGICA CONDICIONAL --- */}
+          {isDashboard ? (
+            // Si estamos en el dashboard, solo renderizamos el contenido
+            children
+          ) : (
+            // Si estamos en la parte pública, renderizamos todo el layout
+            <div className="flex flex-col min-h-screen">
+              <PublicHeader />
+              <main className="flex-grow">
+                {children}
+              </main>
+              <PublicFooter />
+            </div>
+          )}
           <Toaster richColors position="top-right" />
         </CartProvider>
       </body>
