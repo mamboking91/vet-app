@@ -11,19 +11,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { actualizarPropietario } from "../../actions"
 import { User, Mail, Phone, MapPin, FileText, Save, ArrowLeft, AlertTriangle, Edit3, CheckCircle } from "lucide-react"
-
-// Tipo actualizado para reflejar la nueva estructura de la tabla 'propietarios'
-type Propietario = {
-  id: string;
-  nombre_completo: string;
-  email: string | null;
-  telefono: string | null;
-  direccion: string | null;
-  localidad: string | null;
-  provincia: string | null;
-  codigo_postal: string | null;
-  notas: string | null; 
-};
+// --- CORRECCIÓN: Importamos el tipo Propietario desde el archivo central de tipos ---
+import type { Propietario } from '../../types';
 
 interface EditarPropietarioFormProps {
   propietario: Propietario;
