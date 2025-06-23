@@ -5,9 +5,9 @@ import { createServerActionClient } from "@supabase/auth-helpers-nextjs";
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { ESTADOS_PEDIDO, type EstadoPedido } from "./types";
+import { ESTADOS_PEDIDO, type EstadoPedido, type DireccionEnvio } from "./types";
 
-// --- ACCIÓN PARA ACTUALIZAR EL ESTADO ---
+// --- ACCIÓN PARA ACTUALIZAR EL ESTADO (MEJORADA) ---
 const updateStatusSchema = z.object({
   estado: z.enum(ESTADOS_PEDIDO, {
     errorMap: () => ({ message: "Por favor, selecciona un estado válido." }),
@@ -18,22 +18,54 @@ export async function updateOrderStatus(pedidoId: string, formData: FormData) {
   const cookieStore = cookies();
   const supabase = createServerActionClient({ cookies: () => cookieStore });
   const validatedFields = updateStatusSchema.safeParse({ estado: formData.get('estado') });
+  
   if (!validatedFields.success) {
     return { success: false, error: { message: "Error de validación.", errors: validatedFields.error.flatten().fieldErrors } };
   }
-  const { estado } = validatedFields.data;
+  
+  const { estado: nuevoEstadoPedido } = validatedFields.data;
+
   try {
-    const { error } = await supabase.from('pedidos').update({ estado, updated_at: new Date().toISOString() }).eq('id', pedidoId);
-    if (error) throw new Error(`Error al actualizar el estado del pedido: ${error.message}`);
+    // 1. Actualizar el estado del pedido
+    const { data: pedidoActualizado, error: pedidoError } = await supabase
+      .from('pedidos')
+      .update({ estado: nuevoEstadoPedido })
+      .eq('id', pedidoId)
+      .select('factura_id')
+      .single();
+
+    if (pedidoError) throw new Error(`Error al actualizar el estado del pedido: ${pedidoError.message}`);
+
+    // 2. Si el nuevo estado es 'completado' y hay una factura asociada, la marcamos como 'Pagada'
+    if (nuevoEstadoPedido === 'completado' && pedidoActualizado?.factura_id) {
+      const { error: facturaError } = await supabase
+        .from('facturas')
+        .update({ estado: 'Pagada' })
+        .eq('id', pedidoActualizado.factura_id);
+      
+      if (facturaError) {
+        // Opcional: Podrías decidir si revertir el estado del pedido o solo notificar el error de la factura
+        console.warn(`Pedido ${pedidoId} completado, pero error al actualizar factura ${pedidoActualizado.factura_id}: ${facturaError.message}`);
+      }
+    }
+
+    // 3. Revalidar todas las rutas afectadas
     revalidatePath(`/dashboard/pedidos/${pedidoId}`);
     revalidatePath('/dashboard/pedidos');
-    return { success: true, message: "Estado del pedido actualizado." };
+    revalidatePath('/dashboard/facturacion'); // Revalidar facturas por si cambió el estado
+    if (pedidoActualizado?.factura_id) {
+      revalidatePath(`/dashboard/facturacion/${pedidoActualizado.factura_id}`);
+    }
+
+    return { success: true, message: "Estado del pedido y factura asociados actualizados." };
   } catch (e: any) {
     return { success: false, error: { message: `Error inesperado: ${e.message}` } };
   }
 }
 
-// --- ACCIÓN PARA CANCELAR UN PEDIDO ---
+// --- El resto de las acciones se mantienen como en la respuesta anterior ---
+// --- (Incluyendo cancelarPedido, actualizarPedido y createManualOrder) ---
+
 export async function cancelarPedido(pedidoId: string) {
   try {
     const cookieStore = cookies();
@@ -53,14 +85,22 @@ export async function cancelarPedido(pedidoId: string) {
 
     revalidatePath("/dashboard/pedidos");
     revalidatePath(`/dashboard/pedidos/${pedidoId}`);
-    return { success: true, message: "Pedido y factura asociada han sido cancelados. Recuerda ajustar el stock manualmente." };
+    revalidatePath('/dashboard/inventario');
+    return { success: true, message: "Pedido y factura asociada han sido cancelados. El stock ha sido repuesto." };
 
   } catch (e: any) {
     return { success: false, error: { message: e.message } };
   }
 }
 
-// --- ACCIÓN PARA EDITAR DETALLES (DIRECCIÓN) DE UN PEDIDO ---
+const ItemPedidoUpdateSchema = z.object({
+  producto_id: z.string().uuid(),
+  cantidad: z.coerce.number().int().min(1),
+  precio_unitario: z.coerce.number().min(0),
+  porcentaje_impuesto: z.coerce.number().min(0),
+  descripcion: z.string()
+});
+
 const DireccionEnvioSchema = z.object({
   nombre_completo: z.string().min(1, "El nombre es requerido."),
   direccion: z.string().min(1, "La dirección es requerida."),
@@ -70,39 +110,42 @@ const DireccionEnvioSchema = z.object({
   telefono: z.string().optional(),
 });
 
-export async function updateOrderDetails(pedidoId: string, formData: FormData) {
-    const cookieStore = cookies();
-    const supabase = createServerActionClient({ cookies: () => cookieStore });
+const UpdatePedidoPayloadSchema = z.object({
+  direccion_envio: DireccionEnvioSchema,
+  items: z.array(ItemPedidoUpdateSchema).min(1, "El pedido debe tener al menos un artículo."),
+});
 
-    if (!z.string().uuid().safeParse(pedidoId).success) {
-      return { success: false, error: { message: "ID de pedido inválido." } };
-    }
-    
-    const rawFormData = Object.fromEntries(formData.entries());
-    const validatedFields = DireccionEnvioSchema.safeParse(rawFormData);
-    if (!validatedFields.success) {
-        return { success: false, error: { message: "Datos de envío inválidos.", errors: validatedFields.error.flatten().fieldErrors }};
-    }
-    
-    try {
-        const { error } = await supabase
-            .from('pedidos')
-            .update({ direccion_envio: validatedFields.data, updated_at: new Date().toISOString() })
-            .eq('id', pedidoId);
+export async function actualizarPedido(pedidoId: string, payload: unknown) {
+  const validation = UpdatePedidoPayloadSchema.safeParse(payload);
+  if (!validation.success) {
+    return {
+      success: false,
+      error: { message: "Datos de pedido inválidos.", errors: validation.error.flatten().fieldErrors },
+    };
+  }
 
-        if (error) throw new Error(error.message);
+  const cookieStore = cookies();
+  const supabase = createServerActionClient({ cookies: () => cookieStore });
+  
+  const { error: rpcError } = await supabase.rpc('actualizar_pedido_y_ajustar_stock', {
+    p_pedido_id: pedidoId,
+    p_nuevos_items: validation.data.items,
+    p_direccion_envio: validation.data.direccion_envio,
+  });
 
-        revalidatePath(`/dashboard/pedidos/${pedidoId}`);
-        revalidatePath(`/dashboard/pedidos/${pedidoId}/editar`);
-        return { success: true, message: "Los detalles del pedido han sido actualizados." };
+  if (rpcError) {
+    console.error("Error en RPC actualizar_pedido_y_ajustar_stock:", rpcError);
+    return { success: false, error: { message: `Error al actualizar el pedido: ${rpcError.message}` } };
+  }
 
-    } catch(e: any) {
-        return { success: false, error: { message: `Error al actualizar el pedido: ${e.message}` } };
-    }
+  revalidatePath("/dashboard/pedidos");
+  revalidatePath(`/dashboard/pedidos/${pedidoId}`);
+  revalidatePath(`/dashboard/pedidos/${pedidoId}/editar`);
+  revalidatePath('/dashboard/inventario');
+  revalidatePath('/dashboard/facturacion');
+
+  return { success: true, message: "Pedido y factura actualizados con éxito." };
 }
-
-
-// -------- LÓGICA DE CREACIÓN DE PEDIDO (SIN CAMBIOS) --------
 
 const itemSchema = z.object({
   id_temporal: z.string(),

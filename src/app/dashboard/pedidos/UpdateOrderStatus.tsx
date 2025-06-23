@@ -12,17 +12,17 @@ import {
 } from '@/components/ui/select';
 import { ESTADOS_PEDIDO, type EstadoPedido } from './types';
 import { updateOrderStatus } from './actions';
-import { toast } from 'sonner'; // Asumimos que usas sonner para notificaciones
+import { toast } from 'sonner';
 
 interface UpdateOrderStatusProps {
   pedidoId: string;
   currentStatus: EstadoPedido;
+  onStatusUpdate: () => void; // <-- AÑADIMOS EL CALLBACK
 }
 
-export default function UpdateOrderStatus({ pedidoId, currentStatus }: UpdateOrderStatusProps) {
+export default function UpdateOrderStatus({ pedidoId, currentStatus, onStatusUpdate }: UpdateOrderStatusProps) {
   const [status, setStatus] = useState<EstadoPedido>(currentStatus);
   const [isPending, startTransition] = useTransition();
-  const router = useRouter();
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -34,7 +34,7 @@ export default function UpdateOrderStatus({ pedidoId, currentStatus }: UpdateOrd
       const result = await updateOrderStatus(pedidoId, formData);
       if (result.success) {
         toast.success(result.message);
-        router.refresh(); // Refresca los datos de la página del servidor
+        onStatusUpdate(); // <-- LLAMAMOS AL CALLBACK EN LUGAR DE router.refresh()
       } else {
         toast.error(result.error?.message || "No se pudo actualizar el estado.");
       }
