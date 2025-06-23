@@ -1,18 +1,17 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import type { ImagenProducto } from '@/app/dashboard/inventario/types';
+import { toast } from "sonner"; // Importamos toast para notificaciones
 
-// Define la estructura de un artículo en el carrito
 export interface CartItem {
   id: string;
   nombre: string;
-  precioFinal: number; // Guardaremos el precio final calculado
+  precioFinal: number;
   cantidad: number;
   imagenUrl: string;
+  stock_disponible: number; // <-- AÑADIMOS EL STOCK
 }
 
-// Define lo que el contexto va a proveer
 interface CartContextType {
   cartItems: CartItem[];
   addToCart: (item: Omit<CartItem, 'cantidad'>, quantity?: number) => void;
@@ -23,92 +22,87 @@ interface CartContextType {
   totalAmount: number;
 }
 
-// Creamos el Contexto con un valor por defecto
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
-// Creamos el Proveedor del Contexto (el "cerebro")
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
 
-  // Efecto para cargar el carrito desde localStorage cuando el componente se monta
   useEffect(() => {
     try {
       const storedCart = localStorage.getItem('shoppingCart');
-      if (storedCart) {
-        setCartItems(JSON.parse(storedCart));
-      }
-    } catch (error) {
-      console.error("Failed to parse cart from localStorage", error);
-    }
+      if (storedCart) setCartItems(JSON.parse(storedCart));
+    } catch (error) { console.error("Failed to parse cart from localStorage", error); }
   }, []);
 
-  // Efecto para guardar el carrito en localStorage cada vez que cambia
   useEffect(() => {
-    try {
-      localStorage.setItem('shoppingCart', JSON.stringify(cartItems));
-    } catch (error) {
-      console.error("Failed to save cart to localStorage", error);
-    }
+    try { localStorage.setItem('shoppingCart', JSON.stringify(cartItems)); } 
+    catch (error) { console.error("Failed to save cart to localStorage", error); }
   }, [cartItems]);
 
   const addToCart = (product: Omit<CartItem, 'cantidad'>, quantity: number = 1) => {
     setCartItems(prevItems => {
       const existingItem = prevItems.find(item => item.id === product.id);
+
       if (existingItem) {
-        // Si el item ya existe, actualiza su cantidad
+        const newQuantity = existingItem.cantidad + quantity;
+        if (newQuantity > existingItem.stock_disponible) {
+          toast.error(`No puedes añadir más unidades de "${product.nombre}"`, {
+            description: `Solo quedan ${existingItem.stock_disponible} disponibles.`,
+          });
+          return prevItems; // No hacer cambios si se excede el stock
+        }
+        toast.success(`"${product.nombre}" añadido al carrito.`);
         return prevItems.map(item =>
-          item.id === product.id ? { ...item, cantidad: item.cantidad + quantity } : item
+          item.id === product.id ? { ...item, cantidad: newQuantity } : item
         );
       } else {
-        // Si es un item nuevo, lo añade al carrito
+        if (quantity > product.stock_disponible) {
+           toast.error(`No puedes añadir el producto "${product.nombre}"`, {
+            description: `Solo quedan ${product.stock_disponible} disponibles.`,
+          });
+          return prevItems;
+        }
+        toast.success(`"${product.nombre}" añadido al carrito.`);
         return [...prevItems, { ...product, cantidad: quantity }];
       }
     });
   };
 
+  const updateQuantity = (itemId: string, newQuantity: number) => {
+    setCartItems(prevItems =>
+      prevItems.map(item => {
+        if (item.id === itemId) {
+          if (newQuantity > item.stock_disponible) {
+            toast.error(`No puedes añadir más unidades de "${item.nombre}"`, {
+                description: `Solo quedan ${item.stock_disponible} disponibles.`,
+            });
+            return item; // No hacer cambios
+          }
+          if (newQuantity <= 0) {
+            // Se podría eliminar, pero por ahora lo dejamos en 1 como mínimo desde el input.
+            // Opcionalmente, se podría llamar a `removeFromCart(itemId)` aquí.
+            return { ...item, cantidad: 1 };
+          }
+          return { ...item, cantidad: newQuantity };
+        }
+        return item;
+      })
+    );
+  };
+
   const removeFromCart = (itemId: string) => {
     setCartItems(prevItems => prevItems.filter(item => item.id !== itemId));
   };
+  const clearCart = () => setCartItems([]);
 
-  const updateQuantity = (itemId: string, newQuantity: number) => {
-    if (newQuantity <= 0) {
-      // Si la nueva cantidad es 0 o menos, elimina el artículo
-      removeFromCart(itemId);
-    } else {
-      setCartItems(prevItems =>
-        prevItems.map(item =>
-          item.id === itemId ? { ...item, cantidad: newQuantity } : item
-        )
-      );
-    }
-  };
-
-  const clearCart = () => {
-    setCartItems([]);
-  };
-
-  // Calculamos el número total de artículos y el importe total
   const itemCount = cartItems.reduce((total, item) => total + item.cantidad, 0);
   const totalAmount = cartItems.reduce((total, item) => total + item.precioFinal * item.cantidad, 0);
 
-  const value = {
-    cartItems,
-    addToCart,
-    removeFromCart,
-    updateQuantity,
-    clearCart,
-    itemCount,
-    totalAmount,
-  };
+  const value = { cartItems, addToCart, removeFromCart, updateQuantity, clearCart, itemCount, totalAmount };
 
-  return (
-    <CartContext.Provider value={value}>
-      {children}
-    </CartContext.Provider>
-  );
+  return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 }
 
-// Hook personalizado para usar el contexto del carrito fácilmente
 export function useCart() {
   const context = useContext(CartContext);
   if (context === undefined) {

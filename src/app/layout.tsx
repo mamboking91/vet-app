@@ -1,11 +1,12 @@
-"use client"; // <-- AÑADIMOS ESTA LÍNEA PARA PERMITIR HOOKS
+"use client"; 
 
 import type { Metadata } from "next";
 import localFont from 'next/font/local';
 import Link from 'next/link';
-import { ShoppingCart, UserCircle } from 'lucide-react';
+import { ShoppingCart } from 'lucide-react';
 import "./globals.css";
-import { CartProvider, useCart } from '@/context/CartContext'; // <-- 1. IMPORTAMOS EL CONTEXTO Y EL HOOK
+import { CartProvider, useCart } from '@/context/CartContext';
+import AccountButton from '@/components/ui/AccountButton'; // <-- IMPORTAMOS EL NUEVO BOTÓN
 
 const geistSans = localFont({
   src: [
@@ -25,13 +26,7 @@ const geistMono = localFont({
   display: 'swap',
 });
 
-// Nota: 'export const metadata' solo funciona en Componentes de Servidor.
-// Como hemos convertido este layout a un Componente de Cliente,
-// la gestión de metadata debería moverse a las páginas individuales si es necesario.
-
-// --- Componente Header MODIFICADO para usar el carrito ---
 function PublicHeader() {
-  // 2. Usamos el hook para obtener los datos del carrito
   const { itemCount } = useCart();
 
   return (
@@ -54,16 +49,14 @@ function PublicHeader() {
           <div className="flex items-center gap-x-4">
             <Link href="/carrito" className="relative p-2 rounded-full text-gray-500 hover:text-gray-900 hover:bg-gray-100 transition-colors">
               <ShoppingCart className="h-6 w-6" />
-              {/* 3. Mostramos la insignia con el número de artículos */}
               {itemCount > 0 && (
                 <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-xs font-medium text-white">
                   {itemCount}
                 </span>
               )}
             </Link>
-            <Link href="/login" className="p-2 rounded-full text-gray-500 hover:text-gray-900 hover:bg-gray-100 transition-colors">
-              <UserCircle className="h-6 w-6" />
-            </Link>
+            {/* --- REEMPLAZAMOS EL LINK ANTIGUO POR EL NUEVO COMPONENTE --- */}
+            <AccountButton />
           </div>
         </div>
       </div>
@@ -71,7 +64,6 @@ function PublicHeader() {
   );
 }
 
-// --- Componente Footer para la tienda pública (sin cambios) ---
 function PublicFooter() {
   return (
     <footer className="bg-gray-800 text-white">
@@ -94,7 +86,6 @@ function PublicFooter() {
   );
 }
 
-
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -103,7 +94,6 @@ export default function RootLayout({
   return (
     <html lang="es" className={`${geistSans.variable} ${geistMono.variable}`}>
       <body className="antialiased bg-gray-50 font-sans">
-        {/* 4. Envolvemos la aplicación con el CartProvider */}
         <CartProvider>
           <div className="flex flex-col min-h-screen">
             <PublicHeader />
@@ -117,4 +107,3 @@ export default function RootLayout({
     </html>
   );
 }
-

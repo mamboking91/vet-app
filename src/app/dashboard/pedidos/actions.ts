@@ -6,6 +6,8 @@ import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { ESTADOS_PEDIDO, type EstadoPedido, type DireccionEnvio } from "./types";
+// --- 1. SE AÑADE LA IMPORTACIÓN PARA ENVIAR CORREOS ---
+import { sendOrderConfirmationEmail } from "@/app/emails/actions"; 
 
 // --- ACCIÓN PARA ACTUALIZAR EL ESTADO (MEJORADA) ---
 const updateStatusSchema = z.object({
@@ -26,7 +28,6 @@ export async function updateOrderStatus(pedidoId: string, formData: FormData) {
   const { estado: nuevoEstadoPedido } = validatedFields.data;
 
   try {
-    // 1. Actualizar el estado del pedido
     const { data: pedidoActualizado, error: pedidoError } = await supabase
       .from('pedidos')
       .update({ estado: nuevoEstadoPedido })
@@ -36,7 +37,6 @@ export async function updateOrderStatus(pedidoId: string, formData: FormData) {
 
     if (pedidoError) throw new Error(`Error al actualizar el estado del pedido: ${pedidoError.message}`);
 
-    // 2. Si el nuevo estado es 'completado' y hay una factura asociada, la marcamos como 'Pagada'
     if (nuevoEstadoPedido === 'completado' && pedidoActualizado?.factura_id) {
       const { error: facturaError } = await supabase
         .from('facturas')
@@ -44,15 +44,13 @@ export async function updateOrderStatus(pedidoId: string, formData: FormData) {
         .eq('id', pedidoActualizado.factura_id);
       
       if (facturaError) {
-        // Opcional: Podrías decidir si revertir el estado del pedido o solo notificar el error de la factura
         console.warn(`Pedido ${pedidoId} completado, pero error al actualizar factura ${pedidoActualizado.factura_id}: ${facturaError.message}`);
       }
     }
 
-    // 3. Revalidar todas las rutas afectadas
     revalidatePath(`/dashboard/pedidos/${pedidoId}`);
     revalidatePath('/dashboard/pedidos');
-    revalidatePath('/dashboard/facturacion'); // Revalidar facturas por si cambió el estado
+    revalidatePath('/dashboard/facturacion');
     if (pedidoActualizado?.factura_id) {
       revalidatePath(`/dashboard/facturacion/${pedidoActualizado.factura_id}`);
     }
@@ -192,6 +190,23 @@ export async function createManualOrder(payload: ManualOrderPayload) {
   const cookieStore = cookies();
   const supabase = createServerActionClient({ cookies: () => cookieStore });
 
+  // --- 2. SE OBTIENEN LOS DATOS COMPLETOS DEL CLIENTE ---
+  let direccionEnvio, emailCliente, nombreCompleto;
+  if(clienteManual) {
+    direccionEnvio = clienteManual;
+    emailCliente = clienteManual.email;
+    nombreCompleto = clienteManual.nombre_completo;
+  } else if (clienteId) {
+    const { data: clienteData, error: clienteError } = await supabase.from('propietarios').select('*').eq('id', clienteId).single();
+    if(clienteError || !clienteData) throw new Error("No se pudo obtener la información del cliente seleccionado.");
+    direccionEnvio = clienteData;
+    emailCliente = clienteData.email;
+    nombreCompleto = clienteData.nombre_completo;
+  } else {
+    throw new Error("No se proporcionaron datos de cliente.");
+  }
+
+
   const rpcParams = {
       cliente_id_param: clienteId || null,
       cliente_manual_param: clienteManual || null,
@@ -204,6 +219,28 @@ export async function createManualOrder(payload: ManualOrderPayload) {
 
     if (error) {
         throw new Error(error.message);
+    }
+    
+    // --- 3. SE LLAMA A LA FUNCIÓN DE ENVÍO DE CORREO ---
+    if(emailCliente && nombreCompleto && direccionEnvio){
+      await sendOrderConfirmationEmail({
+          pedidoId: orderId,
+          fechaPedido: new Date(),
+          direccionEnvio: {
+              nombre_completo: nombreCompleto,
+              direccion: direccionEnvio.direccion || '',
+              localidad: direccionEnvio.localidad || '',
+              provincia: direccionEnvio.provincia || '',
+              codigo_postal: direccionEnvio.codigo_postal || '',
+          },
+          items: items.map(item => ({
+              nombre: item.nombre,
+              cantidad: item.cantidad,
+              precio_final_unitario: item.subtotal / item.cantidad,
+          })),
+          total: total,
+          emailTo: emailCliente,
+      });
     }
 
     revalidatePath("/dashboard/pedidos");
