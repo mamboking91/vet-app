@@ -7,6 +7,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { ESTADOS_PEDIDO, type EstadoPedido } from "./types";
 
+// --- ACCIÓN PARA ACTUALIZAR EL ESTADO ---
 const updateStatusSchema = z.object({
   estado: z.enum(ESTADOS_PEDIDO, {
     errorMap: () => ({ message: "Por favor, selecciona un estado válido." }),
@@ -14,7 +15,6 @@ const updateStatusSchema = z.object({
 });
 
 export async function updateOrderStatus(pedidoId: string, formData: FormData) {
-  // ... (Esta función no cambia)
   const cookieStore = cookies();
   const supabase = createServerActionClient({ cookies: () => cookieStore });
   const validatedFields = updateStatusSchema.safeParse({ estado: formData.get('estado') });
@@ -33,7 +33,76 @@ export async function updateOrderStatus(pedidoId: string, formData: FormData) {
   }
 }
 
-// -------- LÓGICA DE CREACIÓN DE PEDIDO SIMPLIFICADA --------
+// --- ACCIÓN PARA CANCELAR UN PEDIDO ---
+export async function cancelarPedido(pedidoId: string) {
+  try {
+    const cookieStore = cookies();
+    const supabase = createServerActionClient({ cookies: () => cookieStore });
+
+    if (!z.string().uuid().safeParse(pedidoId).success) {
+      return { success: false, error: { message: "ID de pedido inválido." } };
+    }
+
+    const { error } = await supabase.rpc('cancelar_pedido_y_factura', {
+      pedido_id_param: pedidoId
+    });
+
+    if (error) {
+      throw new Error(`Error al cancelar el pedido: ${error.message}`);
+    }
+
+    revalidatePath("/dashboard/pedidos");
+    revalidatePath(`/dashboard/pedidos/${pedidoId}`);
+    return { success: true, message: "Pedido y factura asociada han sido cancelados. Recuerda ajustar el stock manualmente." };
+
+  } catch (e: any) {
+    return { success: false, error: { message: e.message } };
+  }
+}
+
+// --- ACCIÓN PARA EDITAR DETALLES (DIRECCIÓN) DE UN PEDIDO ---
+const DireccionEnvioSchema = z.object({
+  nombre_completo: z.string().min(1, "El nombre es requerido."),
+  direccion: z.string().min(1, "La dirección es requerida."),
+  localidad: z.string().min(1, "La localidad es requerida."),
+  provincia: z.string().min(1, "La provincia es requerida."),
+  codigo_postal: z.string().min(5, "El código postal es inválido."),
+  telefono: z.string().optional(),
+});
+
+export async function updateOrderDetails(pedidoId: string, formData: FormData) {
+    const cookieStore = cookies();
+    const supabase = createServerActionClient({ cookies: () => cookieStore });
+
+    if (!z.string().uuid().safeParse(pedidoId).success) {
+      return { success: false, error: { message: "ID de pedido inválido." } };
+    }
+    
+    const rawFormData = Object.fromEntries(formData.entries());
+    const validatedFields = DireccionEnvioSchema.safeParse(rawFormData);
+    if (!validatedFields.success) {
+        return { success: false, error: { message: "Datos de envío inválidos.", errors: validatedFields.error.flatten().fieldErrors }};
+    }
+    
+    try {
+        const { error } = await supabase
+            .from('pedidos')
+            .update({ direccion_envio: validatedFields.data, updated_at: new Date().toISOString() })
+            .eq('id', pedidoId);
+
+        if (error) throw new Error(error.message);
+
+        revalidatePath(`/dashboard/pedidos/${pedidoId}`);
+        revalidatePath(`/dashboard/pedidos/${pedidoId}/editar`);
+        return { success: true, message: "Los detalles del pedido han sido actualizados." };
+
+    } catch(e: any) {
+        return { success: false, error: { message: `Error al actualizar el pedido: ${e.message}` } };
+    }
+}
+
+
+// -------- LÓGICA DE CREACIÓN DE PEDIDO (SIN CAMBIOS) --------
 
 const itemSchema = z.object({
   id_temporal: z.string(),
@@ -80,7 +149,6 @@ export async function createManualOrder(payload: ManualOrderPayload) {
   const cookieStore = cookies();
   const supabase = createServerActionClient({ cookies: () => cookieStore });
 
-  // Preparamos los parámetros para nuestra nueva función RPC transaccional
   const rpcParams = {
       cliente_id_param: clienteId || null,
       cliente_manual_param: clienteManual || null,
@@ -92,7 +160,6 @@ export async function createManualOrder(payload: ManualOrderPayload) {
     const { data: orderId, error } = await supabase.rpc('crear_pedido_manual_completo', rpcParams);
 
     if (error) {
-        // El error ahora vendrá limpio de la función de BD.
         throw new Error(error.message);
     }
 

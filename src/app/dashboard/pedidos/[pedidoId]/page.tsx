@@ -1,17 +1,22 @@
 // app/dashboard/pedidos/[pedidoId]/page.tsx
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
-import { notFound } from 'next/navigation';
+"use client"; // This page must be a client component for interaction
+
+import React, { useState, useTransition } from 'react'; // Corrected import for React
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'; // Use client-side supabase for actions
+import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from '@/components/ui/badge';
-import { ChevronLeft, User, Ghost, Phone, Mail, FileText } from 'lucide-react';
+import { ChevronLeft, User, Ghost, Phone, Mail, FileText, XCircle, AlertTriangle, Edit3 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import type { Pedido, DireccionEnvio, EstadoPedido } from '@/app/dashboard/pedidos/types';
 import UpdateOrderStatus from '@/app/dashboard/pedidos/UpdateOrderStatus';
+import { updateOrderStatus } from '@/app/dashboard/pedidos/actions'; // Import the action
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'; // Import AlertDialog
+import { toast } from 'sonner'; // Import toast for notifications
 
 // Tipos de datos para el pedido
 type ItemPedidoConProducto = {
@@ -32,51 +37,104 @@ type PedidoCompleto = Pedido & {
   items_pedido: ItemPedidoConProducto[];
 };
 
-interface PedidoDetallePageProps {
-  params: {
-    pedidoId: string;
+export default function PedidoDetallePage() {
+  const router = useRouter();
+  const params = useParams();
+  const pedidoId = params.pedidoId as string;
+
+  const [order, setOrder] = useState<PedidoCompleto | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [pageError, setPageError] = useState<string | null>(null);
+  const [isCancelling, startCancellingTransition] = useTransition();
+
+  const fetchOrder = async () => {
+    setLoading(true);
+    const supabase = createClientComponentClient();
+    const { data, error } = await supabase
+      .from('pedidos')
+      .select(`
+        *,
+        propietarios ( id, nombre_completo ),
+        items_pedido (
+          cantidad,
+          precio_unitario,
+          productos_inventario ( id, nombre, imagenes )
+        )
+      `)
+      .eq('id', pedidoId)
+      .single<PedidoCompleto>();
+    
+    if (error || !data) {
+      setPageError("Pedido no encontrado o error al cargar: " + (error?.message || ""));
+      setOrder(null);
+    } else {
+      setOrder(data);
+    }
+    setLoading(false);
   };
-}
 
-const getStatusColor = (status: EstadoPedido) => {
-  switch (status) {
-    case 'procesando': return 'bg-blue-100 text-blue-800';
-    case 'enviado': return 'bg-yellow-100 text-yellow-800';
-    case 'completado': return 'bg-green-100 text-green-800';
-    case 'cancelado': return 'bg-red-100 text-red-800';
-    case 'pendiente_pago': return 'bg-orange-100 text-orange-800';
-    default: return 'bg-gray-100 text-gray-800';
+  React.useEffect(() => {
+    fetchOrder();
+  }, [pedidoId]);
+
+  const getStatusColor = (status: EstadoPedido) => {
+    switch (status) {
+      case 'procesando': return 'bg-blue-100 text-blue-800';
+      case 'enviado': return 'bg-yellow-100 text-yellow-800';
+      case 'completado': return 'bg-green-100 text-green-800';
+      case 'cancelado': return 'bg-red-100 text-red-800';
+      case 'pendiente_pago': return 'bg-orange-100 text-orange-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const handleCancelOrder = async () => {
+    if (!order) return;
+    startCancellingTransition(async () => {
+      const formData = new FormData();
+      formData.append('estado', 'cancelado');
+      const result = await updateOrderStatus(order.id, formData);
+      if (result.success) {
+        toast.success(result.message);
+        fetchOrder(); // Re-fetch to update local state and UI
+      } else {
+        toast.error(result.error?.message || "No se pudo cancelar el pedido.");
+      }
+    });
+  };
+
+  const handleEditOrder = () => {
+    // Option 1: Navigate to an edit page (requires creating the page and form)
+    // router.push(`/dashboard/pedidos/${order.id}/editar`);
+
+    // Option 2: Show an alert (simpler for now)
+    toast.info("La edición de pedidos no está implementada en esta versión.", {
+        description: "Para cambios en pedidos ya creados, se recomienda cancelar y crear uno nuevo o ajustar stock manualmente si es necesario."
+    });
+  };
+
+
+  if (loading) {
+    return <div className="text-center py-8">Cargando detalles del pedido...</div>;
   }
-};
 
-export default async function PedidoDetallePage({ params }: PedidoDetallePageProps) {
-  const { pedidoId } = params;
-  const cookieStore = cookies();
-  const supabase = createServerComponentClient({ cookies: () => cookieStore });
-
-  const { data: order, error } = await supabase
-    .from('pedidos')
-    .select(`
-      *,
-      propietarios ( id, nombre_completo ),
-      items_pedido (
-        cantidad,
-        precio_unitario,
-        productos_inventario ( id, nombre, imagenes )
-      )
-    `)
-    .eq('id', pedidoId)
-    .single<PedidoCompleto>();
-  
-  if (error || !order) {
-    notFound();
+  if (pageError || !order) {
+    return (
+      <div className="text-center py-8">
+        <AlertTriangle className="mx-auto h-12 w-12 text-destructive mb-4" />
+        <h2 className="text-xl font-semibold mb-2">Error al Cargar Pedido</h2>
+        <p className="text-muted-foreground mb-6">{pageError || "El pedido solicitado no pudo ser cargado."}</p>
+        <Button asChild variant="outline">
+            <Link href="/dashboard/pedidos">Volver a la Lista de Pedidos</Link>
+        </Button>
+      </div>
+    );
   }
   
-  // CORRECCIÓN: Se añade un objeto por defecto para 'direccion_envio' si es null
   const direccion = order.direccion_envio || {};
   
-  const nombreCliente = order.propietarios?.nombre_completo 
-                      || direccion.nombre_completo 
+  const nombreCliente = order.propietarios?.nombre_completo
+                      || direccion.nombre_completo
                       || `${direccion.nombre || ''} ${direccion.apellidos || ''}`.trim()
                       || 'Cliente Invitado';
 
@@ -92,6 +150,41 @@ export default async function PedidoDetallePage({ params }: PedidoDetallePagePro
         <Badge className={`ml-auto text-base px-4 py-1 capitalize ${getStatusColor(order.estado)}`}>
           {order.estado.replace('_', ' ')}
         </Badge>
+        {/* Edit button - maybe only for certain states */}
+        {(order.estado === 'procesando' || order.estado === 'pendiente_pago') && (
+            <Button variant="outline" size="sm" onClick={handleEditOrder} disabled={isCancelling}>
+                <Edit3 className="mr-2 h-4 w-4" /> Editar Pedido
+            </Button>
+        )}
+        {/* Cancel Button - visible only if not already cancelled or completed */}
+        {(order.estado !== 'cancelado' && order.estado !== 'completado') && (
+            <AlertDialog>
+                <AlertDialogTrigger asChild>
+                    <Button variant="destructive" size="sm" disabled={isCancelling}>
+                        <XCircle className="mr-2 h-4 w-4" /> Cancelar Pedido
+                    </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle className="flex items-center gap-2">
+                           <AlertTriangle className="h-5 w-5 text-destructive" /> ¿Estás seguro de cancelar este pedido?
+                        </AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Esta acción marcará el pedido como "Cancelado" y el stock de los productos se repondrá. Esta acción no se puede deshacer.
+                            <br/>
+                            <p className="mt-2 text-sm font-semibold">Pedido Nº: {order.id.substring(0,8)}</p>
+                            <p className="mt-1 text-sm font-semibold">Cliente: {nombreCliente}</p>
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel disabled={isCancelling}>No, mantener</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleCancelOrder} disabled={isCancelling} className="bg-destructive hover:bg-destructive/90">
+                            {isCancelling ? "Cancelando..." : "Sí, cancelar"}
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -126,12 +219,19 @@ export default async function PedidoDetallePage({ params }: PedidoDetallePagePro
             </CardContent>
           </Card>
         </div>
-        
+
         <div className="space-y-6">
           <Card>
             <CardHeader><CardTitle>Actualizar Estado</CardTitle></CardHeader>
             <CardContent>
-              <UpdateOrderStatus pedidoId={order.id} currentStatus={order.estado} />
+              {/* Only allow status update if not cancelled or completed */}
+              {(order.estado !== 'cancelado' && order.estado !== 'completado') ? (
+                  <UpdateOrderStatus pedidoId={order.id} currentStatus={order.estado} />
+              ) : (
+                  <Badge className={`w-full text-base py-2 text-center capitalize ${getStatusColor(order.estado)}`}>
+                      {order.estado.replace('_', ' ')}
+                  </Badge>
+              )}
             </CardContent>
           </Card>
           <Card>
@@ -160,9 +260,9 @@ export default async function PedidoDetallePage({ params }: PedidoDetallePagePro
             <CardHeader><CardTitle>Dirección de Envío</CardTitle></CardHeader>
             <CardContent>
                 <address className="not-italic text-sm text-gray-600">
-                    {direccion?.direccion}<br/>
-                    {direccion?.codigo_postal} {direccion?.localidad}<br/>
-                    {direccion?.provincia}
+                    {direccion?.direccion && <span>{direccion.direccion}<br/></span>}
+                    {(direccion?.codigo_postal || direccion?.localidad) && <span>{direccion.codigo_postal} {direccion.localidad}<br/></span>}
+                    {direccion?.provincia && <span>{direccion.provincia}</span>}
                 </address>
             </CardContent>
           </Card>

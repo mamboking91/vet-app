@@ -1,6 +1,8 @@
+// src/app/dashboard/pedidos/PedidosTable.tsx
 "use client";
 
 import { useRouter } from 'next/navigation';
+import Link from 'next/link'; // Import Link
 import {
   Table,
   TableBody,
@@ -20,7 +22,7 @@ interface PedidosTableProps {
   pedidos: PedidoParaTabla[];
 }
 
-// Función para obtener el color de la insignia según el estado del pedido
+// Function to get badge color based on order status (remains the same)
 const getStatusColor = (status: EstadoPedido) => {
   switch (status) {
     case 'procesando':
@@ -41,11 +43,7 @@ const getStatusColor = (status: EstadoPedido) => {
 export default function PedidosTable({ pedidos }: PedidosTableProps) {
   const router = useRouter();
 
-  const handleViewDetails = (pedidoId: string) => {
-    // Redirigiremos a una futura página de detalle del pedido
-    // router.push(`/dashboard/pedidos/${pedidoId}`);
-    alert(`Funcionalidad "Ver Detalles" para el pedido ${pedidoId} pendiente de implementar.`);
-  };
+  // REMOVE handleViewDetails function, use Link directly
 
   return (
     <div className="bg-white shadow-md rounded-lg overflow-hidden">
@@ -67,7 +65,7 @@ export default function PedidosTable({ pedidos }: PedidosTableProps) {
                 #{pedido.id.substring(0, 8)}...
               </TableCell>
               <TableCell className="text-sm">
-                {format(new Date(pedido.created_at), "dd MMM yyyy, HH:mm", { locale: es })}
+                {format(new Date(pedido.created_at), "dd MMM, HH:mm", { locale: es })}
               </TableCell>
               <TableCell>
                 <div className="flex items-center gap-2">
@@ -88,9 +86,12 @@ export default function PedidosTable({ pedidos }: PedidosTableProps) {
                 </Badge>
               </TableCell>
               <TableCell className="text-right">
-                <Button variant="outline" size="sm" onClick={() => handleViewDetails(pedido.id)}>
-                  <Eye className="mr-2 h-4 w-4" />
-                  Ver Detalles
+                {/* Use Link component for navigation */}
+                <Button variant="outline" size="sm" asChild>
+                  <Link href={`/dashboard/pedidos/${pedido.id}`}>
+                    <Eye className="mr-2 h-4 w-4" />
+                    Ver Detalles
+                  </Link>
                 </Button>
               </TableCell>
             </TableRow>
