@@ -1,6 +1,6 @@
 "use client";
 
-import { useTransition, useState } from 'react';
+import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -36,8 +36,9 @@ export default function SolicitarCitaForm({ mascotas }: SolicitarCitaFormProps) 
         });
         router.push('/cuenta/citas');
       } else {
+        const errorMsg = result.error?.errors ? JSON.stringify(result.error.errors) : result.error?.message;
         toast.error("Error al enviar la solicitud", {
-          description: result.error?.message,
+          description: errorMsg || "Por favor, revisa los datos del formulario.",
         });
       }
     });
@@ -68,7 +69,7 @@ export default function SolicitarCitaForm({ mascotas }: SolicitarCitaFormProps) 
       </div>
        <div>
         <Label htmlFor="motivo">Motivo de la visita</Label>
-        <Textarea id="motivo" name="motivo" required placeholder="Describe brevemente por qué necesitas una cita (ej: revisión anual, no come bien, cojea...)" />
+        <Textarea id="motivo" name="motivo" required minLength={10} placeholder="Describe brevemente por qué necesitas una cita (ej: revisión anual, no come bien, cojea...)" />
       </div>
       <Button type="submit" disabled={isPending} className="w-full">
         {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

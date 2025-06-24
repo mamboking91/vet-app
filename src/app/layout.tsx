@@ -42,6 +42,7 @@ function PublicHeader() {
           <nav className="hidden md:flex md:gap-x-6">
             <Link href="/" className="text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors">Inicio</Link>
             <Link href="/tienda" className="text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors">Tienda</Link>
+            <Link href="/servicios/solicitar-cita" className="text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors">Pedir Cita</Link>
             <Link href="/nosotros" className="text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors">Nosotros</Link>
             <Link href="/contacto" className="text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors">Contacto</Link>
           </nav>
