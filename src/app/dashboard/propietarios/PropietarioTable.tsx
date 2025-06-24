@@ -1,4 +1,4 @@
-// app/dashboard/propietarios/PropietariosTable.tsx
+// src/app/dashboard/propietarios/PropietariosTable.tsx
 "use client"
 
 import { useState, useTransition } from "react"
@@ -123,15 +123,22 @@ export default function PropietariosTable({ propietarios }: PropietariosTablePro
               `}
             >
               <div className="col-span-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-semibold text-sm shadow-md">
+                {/* --- INICIO DE LA CORRECCIÓN --- */}
+                <Link
+                  href={`/dashboard/propietarios/${propietario.id}`}
+                  className="flex items-center gap-3 group"
+                >
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-semibold text-sm shadow-md flex-shrink-0">
                     {propietario.nombre_completo.charAt(0).toUpperCase()}
                   </div>
                   <div>
-                    <div className="font-semibold text-gray-900">{propietario.nombre_completo}</div>
+                    <div className="font-semibold text-gray-900 group-hover:text-blue-700 group-hover:underline transition-colors">
+                      {propietario.nombre_completo}
+                    </div>
                     <div className="text-xs text-gray-500">ID: {propietario.id.slice(0, 8)}...</div>
                   </div>
-                </div>
+                </Link>
+                {/* --- FIN DE LA CORRECCIÓN --- */}
               </div>
 
               <div className="col-span-3 hidden sm:flex items-center">

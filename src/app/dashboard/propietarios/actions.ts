@@ -160,3 +160,60 @@ export async function eliminarPropietario(id: string) {
     return { success: false, error: { message: `Error inesperado en eliminarPropietario: ${e.message}` } };
   }
 }
+
+// --- NUEVA FUNCIÓN PARA ACTUALIZAR EL ROL ---
+const rolValido = z.enum(['cliente', 'administrador']);
+
+export async function actualizarRolPropietario(propietarioId: string, nuevoRol: z.infer<typeof rolValido>) {
+    const cookieStore = cookies();
+    const supabase = createServerActionClient({ cookies: () => cookieStore });
+
+    // 1. Verificar que el usuario que hace la petición está autenticado
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+        return { success: false, error: { message: "Acción no permitida: Usuario no autenticado." } };
+    }
+
+    // 2. Verificar que el usuario que hace la petición es un administrador
+    const { data: adminProfile } = await supabase
+        .from('propietarios')
+        .select('rol')
+        .eq('id', user.id)
+        .single();
+        
+    console.log(`[Security Check] User ${user.email} con rol '${adminProfile?.rol}' está intentando cambiar un rol.`);
+
+    if (adminProfile?.rol !== 'administrador') {
+        return { success: false, error: { message: "Acción no permitida: Permisos insuficientes." } };
+    }
+
+    // 3. Validar los datos de entrada
+    if (!z.string().uuid().safeParse(propietarioId).success) {
+        return { success: false, error: { message: "El ID del propietario proporcionado no es válido." } };
+    }
+    const validatedRole = rolValido.safeParse(nuevoRol);
+    if (!validatedRole.success) {
+        return { success: false, error: { message: "El rol seleccionado no es válido." } };
+    }
+
+    // 4. Medida de seguridad: impedir que un administrador se quite el rol a sí mismo
+    if (user.id === propietarioId) {
+        return { success: false, error: { message: "No puedes cambiar tu propio rol." } };
+    }
+
+    // 5. Actualizar el rol en la base de datos
+    const { error: updateError } = await supabase
+        .from('propietarios')
+        .update({ rol: validatedRole.data })
+        .eq('id', propietarioId);
+
+    if (updateError) {
+        return { success: false, error: { message: `Error al actualizar el rol: ${updateError.message}` } };
+    }
+
+    // 6. Revalidar las rutas afectadas para que el cambio se refleje en la UI
+    revalidatePath('/dashboard/propietarios');
+    revalidatePath(`/dashboard/propietarios/${propietarioId}`);
+
+    return { success: true, message: "Rol actualizado correctamente." };
+}

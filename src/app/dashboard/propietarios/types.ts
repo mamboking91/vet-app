@@ -13,6 +13,7 @@ export type Propietario = {
   codigo_postal: string | null;
   notas: string | null;
   created_at: string;
+  rol: 'cliente' | 'administrador';
 };
 
 // --- TIPOS EXISTENTES ---
