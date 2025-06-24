@@ -1,12 +1,10 @@
-// app/dashboard/configuracion/page.tsx
+// src/app/dashboard/configuracion/page.tsx
 import React from 'react';
 import Link from 'next/link';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
-import { Building, UserCircle, Shield, Bell, Palette } from 'lucide-react';
+import { Building, UserCircle, Shield, Bell, Palette, FileEdit } from 'lucide-react';
 
-// Esta directiva es opcional para esta página si no tiene fetches de datos dinámicos,
-// pero si alguna configuración futura lo necesitara, está bien mantenerla.
-// export const dynamic = 'force-dynamic'; 
+export const dynamic = 'force-dynamic'; 
 
 interface ConfigItem {
   title: string;
@@ -30,6 +28,13 @@ const configItems: ConfigItem[] = [
     href: "/dashboard/configuracion/perfil",
     icon: UserCircle,
     enabled: true, 
+  },
+  {
+    title: "Gestión de Contenido",
+    description: "Edita los textos e imágenes de las páginas públicas como Inicio, Nosotros, etc.",
+    href: "/dashboard/configuracion/contenido",
+    icon: FileEdit,
+    enabled: true,
   },
   {
     title: "Usuarios y Permisos",

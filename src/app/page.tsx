@@ -1,139 +1,141 @@
 import Link from 'next/link';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from '@/components/ui/card';
-import { ArrowRight, ShoppingBag } from 'lucide-react';
 import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
-import type { ProductoCatalogo, ImagenProducto } from '@/app/dashboard/inventario/types';
-import type { ClinicData } from '@/app/dashboard/configuracion/types';
+import type { BloquePagina, ContenidoHeroe, ContenidoCaracteristicas, ContenidoProductosDestacados, ContenidoTextoConImagen, ContenidoCTA } from '@/app/dashboard/configuracion/contenido/types';
 import ProductImage from '@/components/ui/ProductImage';
+import React from 'react';
+import { cn } from '@/lib/utils';
+import { ArrowRight, ShoppingBag, HeartPulse, Stethoscope, Siren, Sparkles, LucideProps } from 'lucide-react';
 
-// Tipado para los productos que vamos a mostrar, AHORA INCLUYE EL IMPUESTO
-type ProductoDestacado = Pick<
-  ProductoCatalogo, 
-  'id' | 'nombre' | 'precio_venta' | 'imagenes' | 'porcentaje_impuesto'
->;
+const iconMap: { [key: string]: React.FC<LucideProps> } = { Stethoscope, HeartPulse, Siren, Sparkles };
 
-// Función para obtener la imagen principal de un producto
-function getPrimaryImage(imagenes: ImagenProducto[] | null, fallbackUrl: string): string {
-  if (!imagenes || imagenes.length === 0) {
-    return fallbackUrl;
-  }
-  const primaryImage = imagenes.find(img => img.isPrimary);
-  return primaryImage ? primaryImage.url : imagenes[0].url;
-}
+// --- Componentes para Renderizar cada Bloque ---
 
-// --- Componente para la tarjeta de producto ---
-function ProductCard({ product, fallbackImageUrl }: { product: ProductoDestacado, fallbackImageUrl: string }) {
-  const primaryImageUrl = getPrimaryImage(product.imagenes, fallbackImageUrl);
-  
-  // --- CÁLCULO DEL PRECIO FINAL ---
-  let precioFinalDisplay = 'Consultar';
-  if (product.precio_venta !== null && product.porcentaje_impuesto !== null) {
-    const precioBase = Number(product.precio_venta);
-    const impuesto = Number(product.porcentaje_impuesto);
-    const precioFinal = precioBase * (1 + impuesto / 100);
-    precioFinalDisplay = `${precioFinal.toFixed(2)} €`;
-  }
-
+function HeroBlock({ contenido }: { contenido: ContenidoHeroe }) {
   return (
-    <Link href={`/tienda/${product.id}`} className="group">
-      <Card className="w-full overflow-hidden transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
-        <CardContent className="p-0">
-          <div className="aspect-square overflow-hidden bg-gray-100 flex items-center justify-center">
-            <ProductImage
-              src={primaryImageUrl}
-              alt={product.nombre}
-              width={600}
-              height={600}
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-            />
-          </div>
-          <div className="p-4 border-t">
-            <h3 className="text-md font-semibold text-gray-800 truncate">{product.nombre}</h3>
-            <p className="text-lg font-bold text-blue-600 mt-2">
-              {precioFinalDisplay}
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-    </Link>
+    <section className="bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-slate-900 dark:to-blue-950">
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-20 text-center">
+        <h1 className="text-4xl md:text-6xl font-extrabold text-gray-900 dark:text-white">{contenido.titulo || "El mejor cuidado para tu mejor amigo"}</h1>
+        <p className="mt-4 max-w-2xl mx-auto text-lg text-gray-600 dark:text-gray-300">{contenido.subtitulo || "Descubre nuestra selección de productos de alta calidad."}</p>
+        <div className="mt-8 flex flex-col sm:flex-row justify-center gap-4">
+          <Button asChild size="lg" className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg"><Link href={contenido.boton_principal?.enlace || '/tienda'}>{contenido.boton_principal?.texto || 'Ir a la Tienda'}<ShoppingBag className="ml-2 h-5 w-5" /></Link></Button>
+          <Button asChild size="lg" variant="outline"><Link href={contenido.boton_secundario?.enlace || '/servicios/solicitar-cita'}>{contenido.boton_secundario?.texto || 'Pedir Cita'}<ArrowRight className="ml-2 h-5 w-5" /></Link></Button>
+        </div>
+      </div>
+    </section>
   );
 }
 
+function FeaturesBlock({ contenido }: { contenido: ContenidoCaracteristicas }) {
+  if (!contenido.items || contenido.items.length === 0) return null;
+  return (
+    <section className="bg-white dark:bg-slate-800/50 py-16">
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          {contenido.items.map(item => {
+            const IconComponent = iconMap[item.icono] || Sparkles;
+            return (
+              <div key={item.id} className="text-center p-6">
+                <div className="flex items-center justify-center h-16 w-16 rounded-full bg-blue-100 dark:bg-blue-900/50 mx-auto mb-4">
+                  <IconComponent className="h-8 w-8 text-blue-600 dark:text-blue-400" />
+                </div>
+                <h3 className="text-xl font-bold text-gray-800 dark:text-white">{item.titulo}</h3>
+                <div className="mt-2 text-gray-600 dark:text-gray-300 prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: item.descripcion }} />
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
 
-// --- Página principal ---
+async function FeaturedProductsBlock({ contenido }: { contenido: ContenidoProductosDestacados }) {
+  const supabase = createServerComponentClient({ cookies: () => cookies() });
+  const [productsResult, clinicResult] = await Promise.all([ supabase.from('productos_inventario').select('id, nombre, precio_venta, porcentaje_impuesto, imagenes').eq('en_tienda', true).eq('destacado', true).limit(4), supabase.from('datos_clinica').select('logo_url').single() ]);
+  const { data: featuredProducts } = productsResult;
+  if (!featuredProducts?.length) return null;
+  const logoFallbackUrl = clinicResult.data?.logo_url || "https://placehold.co/600x600/e2e8f0/e2e8f0.png?text=Gomera+Mascotas";
+  return (<section className="py-16 bg-gray-50 dark:bg-slate-900"><div className="container mx-auto px-4 sm:px-6 lg:px-8"><h2 className="text-3xl font-bold text-center text-gray-800 dark:text-white mb-10">{contenido.titulo}</h2><div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">{featuredProducts.map(product => (<ProductCard key={product.id} product={product as any} fallbackImageUrl={logoFallbackUrl}/>))}</div></div></section>);
+}
+
+function TextWithImageBlock({ contenido }: { contenido: ContenidoTextoConImagen }) {
+  return (
+    <section className="py-16 bg-white dark:bg-slate-800/50">
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+        <div className={cn("grid grid-cols-1 md:grid-cols-2 gap-12 items-center", contenido.posicionImagen === 'izquierda' && 'md:grid-flow-row-dense')}>
+          <div className={cn("prose dark:prose-invert max-w-none lg:prose-lg", contenido.posicionImagen === 'izquierda' && 'md:col-start-2')}>
+            <h2 className="text-3xl font-bold">{contenido.titulo}</h2>
+            <div dangerouslySetInnerHTML={{ __html: contenido.texto }} />
+            {contenido.boton?.texto && contenido.boton?.enlace && (
+              <Button asChild className="mt-6 no-underline"><Link href={contenido.boton.enlace}>{contenido.boton.texto}</Link></Button>
+            )}
+          </div>
+          <div className={cn(contenido.posicionImagen === 'izquierda' && 'md:col-start-1')}>
+            <ProductImage src={contenido.imagenUrl} alt={contenido.titulo} width={800} height={600} className="rounded-lg shadow-xl object-cover aspect-[4/3]" />
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function CtaBlock({ contenido }: { contenido: ContenidoCTA }) {
+  return (
+    <section className="bg-blue-600 text-white">
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
+        <div className="prose prose-invert max-w-none text-center" dangerouslySetInnerHTML={{ __html: contenido.titulo }}/>
+        {contenido.boton?.texto && contenido.boton?.enlace && (
+          <Button asChild size="lg" variant="secondary" className="mt-8"><Link href={contenido.boton.enlace}>{contenido.boton.texto}</Link></Button>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function ProductCard({ product, fallbackImageUrl }: { product: any, fallbackImageUrl: string }) {
+    const getPrimaryImage = (imagenes: any[] | null): string => {
+      if (!imagenes || imagenes.length === 0) return fallbackImageUrl;
+      const primary = imagenes.find(img => img.isPrimary);
+      return primary ? primary.url : imagenes[0].url;
+    }
+    const primaryImageUrl = getPrimaryImage(product.imagenes);
+    let precioFinalDisplay = 'Consultar';
+    if (product.precio_venta !== null && product.porcentaje_impuesto !== null) {
+      const precioFinal = Number(product.precio_venta) * (1 + Number(product.porcentaje_impuesto) / 100);
+      precioFinalDisplay = `${precioFinal.toFixed(2)} €`;
+    }
+    return (
+      <Link href={`/tienda/${product.id}`} className="group"><Card className="w-full overflow-hidden transition-all duration-300 hover:shadow-xl hover:-translate-y-1 bg-white dark:bg-slate-800"><CardContent className="p-0"><div className="aspect-square overflow-hidden bg-gray-100 flex items-center justify-center"><ProductImage src={primaryImageUrl} alt={product.nombre} width={600} height={600} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"/></div><div className="p-4 border-t dark:border-slate-700"><h3 className="text-md font-semibold text-gray-800 dark:text-white truncate">{product.nombre}</h3><p className="text-lg font-bold text-blue-600 dark:text-blue-400 mt-2">{precioFinalDisplay}</p></div></CardContent></Card></Link>
+    );
+}
+
+// --- Página Principal que Renderiza los Bloques ---
 export default async function HomePage() {
-  const cookieStore = cookies();
-  const supabase = createServerComponentClient({ cookies: () => cookieStore });
+  const supabase = createServerComponentClient({ cookies: () => cookies() });
+  const { data: bloques, error } = await supabase.from('bloques_pagina').select('*').eq('pagina', 'inicio').order('orden', { ascending: true });
+  if (error) console.error("Error al cargar los bloques de la página de inicio:", error);
 
-  // Hacemos dos consultas en paralelo para mejorar el rendimiento
-  const [clinicResult, featuredProductsResult] = await Promise.all([
-    supabase.from('datos_clinica').select('logo_url').single(),
-    // CORRECCIÓN: Añadimos 'porcentaje_impuesto' a la consulta
-    supabase.from('productos_inventario')
-      .select('id, nombre, precio_venta, porcentaje_impuesto, imagenes')
-      .eq('en_tienda', true)
-      .eq('destacado', true)
-      .limit(4)
-  ]);
-
-  const { data: clinicData } = clinicResult;
-  const { data: featuredProducts, error: productsError } = featuredProductsResult;
-
-  if (productsError) {
-    console.error("Error fetching featured products:", productsError);
-  }
-
-  const logoFallbackUrl = (clinicData && clinicData.logo_url) 
-    ? clinicData.logo_url 
-    : "https://placehold.co/600x600/e2e8f0/e2e8f0?text=Gomera+Mascotas";
+  const renderBlock = (bloque: BloquePagina) => {
+    switch (bloque.tipo_bloque) {
+      case 'heroe': return <HeroBlock key={bloque.id} contenido={bloque.contenido} />;
+      case 'caracteristicas': return <FeaturesBlock key={bloque.id} contenido={bloque.contenido} />;
+      case 'productos_destacados': return <FeaturedProductsBlock key={bloque.id} contenido={bloque.contenido} />;
+      case 'texto_con_imagen': return <TextWithImageBlock key={bloque.id} contenido={bloque.contenido} />;
+      case 'cta': return <CtaBlock key={bloque.id} contenido={bloque.contenido} />;
+      default: return null;
+    }
+  };
 
   return (
     <div>
-      {/* Sección Héroe */}
-      <section className="bg-gradient-to-br from-blue-50 to-indigo-100">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-20 text-center">
-          <h1 className="text-4xl md:text-6xl font-extrabold text-gray-800">
-            El mejor cuidado para tu mejor amigo
-          </h1>
-          <p className="mt-4 max-w-2xl mx-auto text-lg text-gray-600">
-            Descubre nuestra selección de productos de alta calidad, elegidos por expertos para garantizar la felicidad y salud de tu mascota.
-          </p>
-          <div className="mt-8 flex justify-center gap-4">
-            <Button asChild size="lg" className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg">
-              <Link href="/tienda">
-                Ir a la Tienda <ShoppingBag className="ml-2 h-5 w-5" />
-              </Link>
-            </Button>
-            <Button asChild size="lg" variant="outline">
-              <Link href="/contacto">
-                Contactar <ArrowRight className="ml-2 h-5 w-5" />
-              </Link>
-            </Button>
-          </div>
-        </div>
-      </section>
-
-      {/* Sección de Productos Destacados */}
-      {featuredProducts && featuredProducts.length > 0 && (
-        <section className="py-16">
-          <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-            <h2 className="text-3xl font-bold text-center text-gray-800 mb-10">
-              Productos Destacados
-            </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
-              {featuredProducts.map(product => (
-                <ProductCard 
-                  key={product.id} 
-                  product={product as ProductoDestacado}
-                  fallbackImageUrl={logoFallbackUrl}
-                />
-              ))}
-            </div>
-          </div>
-        </section>
-      )}
+        {(bloques && bloques.length > 0) ? (
+            bloques.map(bloque => renderBlock(bloque))
+        ) : (
+            <HeroBlock contenido={{titulo: "Bienvenido", subtitulo: "Contenido por defecto.", boton_principal: {texto: 'Tienda', enlace: '/tienda'}, boton_secundario: {texto: 'Citas', enlace: '/servicios/solicitar-cita'}}}/>
+        )}
     </div>
   );
 }

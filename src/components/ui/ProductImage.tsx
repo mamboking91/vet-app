@@ -11,18 +11,16 @@ interface ProductImageProps {
   className?: string;
 }
 
-// Este es un Componente de Cliente. Maneja su propio estado y eventos.
 export default function ProductImage({ src, alt, width, height, className }: ProductImageProps) {
   const [imgSrc, setImgSrc] = useState(src);
 
-  // Aseguramos que la imagen se actualice si la prop 'src' cambia.
   useEffect(() => {
     setImgSrc(src);
   }, [src]);
 
-  // Este manejador de eventos es seguro porque vive dentro de un Componente de Cliente.
   const handleError = () => {
-    setImgSrc(`https://placehold.co/${width}x${height}/e2e8f0/e2e8f0?text=Imagen+no+disponible`);
+    // CORRECCIÓN: La URL por defecto ahora tiene el formato correcto.
+    setImgSrc(`https://placehold.co/${width}x${height}/e2e8f0/e2e8f0.png?text=Imagen+no+disponible`);
   };
 
   return (
