@@ -1,4 +1,6 @@
 // src/app/dashboard/descuentos/nuevo/page.tsx
+'use client'
+
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { ChevronLeft, TicketPercent } from 'lucide-react';

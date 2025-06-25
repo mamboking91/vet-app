@@ -1,4 +1,3 @@
-// src/app/dashboard/descuentos/nuevo/DescuentoForm.tsx
 "use client";
 
 import { useState, useTransition } from 'react';
@@ -11,8 +10,9 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
-import { DatePickerConEstado } from '@/components/ui/date-picker-con-estado';
 import { Loader2 } from 'lucide-react';
+// 1. Cambia la importación
+import { DatePickerGeneral } from '@/components/ui/DatePickerGeneral'; 
 
 export default function DescuentoForm() {
   const router = useRouter();
@@ -48,6 +48,7 @@ export default function DescuentoForm() {
           <CardDescription>Define las reglas y el valor de tu nuevo código de descuento.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
+          {/* ... otros campos del formulario ... */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-2">
               <Label htmlFor="codigo">Código</Label>
@@ -77,6 +78,7 @@ export default function DescuentoForm() {
               <Input id="valor" name="valor" type="number" step="0.01" placeholder="10" required />
             </div>
           </div>
+          
           <div className="space-y-2">
             <Label>Condiciones (Opcional)</Label>
             <div className="p-4 border rounded-md grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -90,9 +92,11 @@ export default function DescuentoForm() {
                 </div>
                  <div className="space-y-2">
                     <Label htmlFor="fecha_expiracion">Fecha de Expiración</Label>
-                    <DatePickerConEstado 
+                    {/* 2. Usa el nuevo componente */}
+                    <DatePickerGeneral
                       date={fechaExpiracion}
-                      onSelect={setFechaExpiracion}
+                      onDateChange={setFechaExpiracion}
+                      placeholder="Elige una fecha"
                     />
                  </div>
             </div>
