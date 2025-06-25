@@ -1,4 +1,5 @@
-"use client"; 
+// src/app/layout.tsx
+"use client"; // Se mueve "use client" al principio para todo el archivo
 
 import type { Metadata } from "next";
 import localFont from 'next/font/local';
@@ -8,7 +9,8 @@ import "./globals.css";
 import { CartProvider, useCart } from '@/context/CartContext';
 import AccountButton from '@/components/ui/AccountButton';
 import { Toaster } from "sonner";
-import { usePathname } from 'next/navigation'; // <-- 1. IMPORTAMOS usePathname
+import { usePathname } from 'next/navigation';
+import { ReactNode } from "react";
 
 const geistSans = localFont({
   src: [
@@ -28,8 +30,10 @@ const geistMono = localFont({
   display: 'swap',
 });
 
+// Componente para el Header Público
 function PublicHeader() {
-  const { itemCount } = useCart();
+  // CORRECCIÓN: Se usa 'totalItems' en lugar de 'itemCount'
+  const { totalItems } = useCart();
   return (
     <header className="bg-white/80 backdrop-blur-md sticky top-0 z-50 border-b border-gray-200">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
@@ -49,7 +53,7 @@ function PublicHeader() {
           <div className="flex items-center gap-x-4">
             <Link href="/carrito" className="relative p-2 rounded-full text-gray-500 hover:text-gray-900 hover:bg-gray-100 transition-colors">
               <ShoppingCart className="h-6 w-6" />
-              {itemCount > 0 && (<span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-xs font-medium text-white">{itemCount}</span>)}
+              {totalItems > 0 && (<span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-xs font-medium text-white">{totalItems}</span>)}
             </Link>
             <AccountButton />
           </div>
@@ -59,6 +63,7 @@ function PublicHeader() {
   );
 }
 
+// Componente para el Footer Público
 function PublicFooter() {
   return (
     <footer className="bg-gray-800 text-white">
@@ -77,36 +82,44 @@ function PublicFooter() {
   );
 }
 
+
+// Componente Cliente que envuelve el contenido principal
+function AppBody({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+  const isDashboard = pathname.startsWith('/dashboard');
+
+  return (
+    <body className="antialiased bg-gray-50 font-sans">
+      <CartProvider>
+        {isDashboard ? (
+          // Si estamos en el dashboard, solo renderizamos el contenido
+          children
+        ) : (
+          // Si estamos en la parte pública, renderizamos todo el layout
+          <div className="flex flex-col min-h-screen">
+            <PublicHeader />
+            <main className="flex-grow">
+              {children}
+            </main>
+            <PublicFooter />
+          </div>
+        )}
+        <Toaster richColors position="bottom-right" />
+      </CartProvider>
+    </body>
+  );
+}
+
+
+// El layout principal, que ahora delega la lógica de cliente.
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  // 2. OBTENEMOS LA RUTA ACTUAL
-  const pathname = usePathname();
-  const isDashboard = pathname.startsWith('/dashboard');
-
   return (
     <html lang="es" className={`${geistSans.variable} ${geistMono.variable}`}>
-      <body className="antialiased bg-gray-50 font-sans">
-        <CartProvider>
-          {/* --- 3. LÓGICA CONDICIONAL --- */}
-          {isDashboard ? (
-            // Si estamos en el dashboard, solo renderizamos el contenido
-            children
-          ) : (
-            // Si estamos en la parte pública, renderizamos todo el layout
-            <div className="flex flex-col min-h-screen">
-              <PublicHeader />
-              <main className="flex-grow">
-                {children}
-              </main>
-              <PublicFooter />
-            </div>
-          )}
-          <Toaster richColors position="bottom-right" />
-        </CartProvider>
-      </body>
+      <AppBody>{children}</AppBody>
     </html>
   );
 }

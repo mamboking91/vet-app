@@ -81,6 +81,7 @@ export type ProductoCatalogo = {
   categorias_tienda: { nombre: string }[] | null;
   created_at?: string;
   updated_at?: string | null;
+  stock_disponible?: number | null;
 };
 
 export type LoteDeProducto = {

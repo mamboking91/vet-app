@@ -1,15 +1,15 @@
+// src/app/dashboard/layout.tsx
 import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import Link from 'next/link';
 import { 
   LayoutDashboard, Users, Dog, 
   CalendarDays, Archive, FileText, Wrench, Settings, LogOut,
-  ShoppingCart, Inbox
+  ShoppingCart, Inbox, TicketPercent // Se añade el nuevo icono
 } from 'lucide-react';
 import LogoutButton from '@/components/ui/LogoutButton';
 import NavLink from './NavLink';
 
-// El tipo NavItem ahora es solo para organizar los datos
 interface NavItemData {
   href: string;
   label: string;
@@ -26,11 +26,13 @@ export default async function DashboardLayout({
   const cookieStore = cookies();
   const supabase = createServerComponentClient({ cookies: () => cookieStore });
 
+  // Se mantiene tu consulta original para el contador de solicitudes
   const { count: pendingRequestsCount } = await supabase
-    .from('solicitudes_cita_publica')
-    .select('id', { count: 'exact' })
-    .eq('estado', 'pendiente');
+    .from('solicitudes_cita')
+    .select('id', { count: 'exact', head: true })
+    .eq('gestionada', false);
 
+  // Se añade el nuevo enlace de "Descuentos" a tu lista de navegación existente
   const navItems: NavItemData[] = [
     { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { 
@@ -46,6 +48,8 @@ export default async function DashboardLayout({
     { href: "/dashboard/facturacion", label: "Facturación", icon: FileText },
     { href: "/dashboard/pedidos", label: "Pedidos", icon: ShoppingCart },
     { href: "/dashboard/inventario", label: "Inventario", icon: Archive },
+    // --- NUEVO ENLACE AÑADIDO AQUÍ ---
+    { href: "/dashboard/descuentos", label: "Descuentos", icon: TicketPercent },
     { href: "/dashboard/informes", label: "Informes", icon: FileText, disabled: true },
   ];
   
@@ -53,6 +57,7 @@ export default async function DashboardLayout({
     { href: "/dashboard/configuracion", label: "Configuración", icon: Settings },
   ];
 
+  // Se utiliza tu estructura de layout original, sin cambios en el HTML/CSS
   return (
     <div className="flex h-screen bg-slate-50 dark:bg-slate-950">
       <aside 
@@ -63,8 +68,7 @@ export default async function DashboardLayout({
             Clínica Vet 🐾
           </Link>
         </div>
-        <nav className="flex-grow space-y-1">
-          {/* --- CORRECCIÓN: Usamos NavLink pasando el icono y el texto como children --- */}
+        <nav className="flex-grow space-y-1 overflow-y-auto">
           {navItems.map((item) => (
             <NavLink
               key={item.label}

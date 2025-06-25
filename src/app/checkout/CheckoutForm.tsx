@@ -12,7 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { AlertTriangle, Loader2, Lock } from 'lucide-react';
 import type { Propietario } from '@/app/dashboard/propietarios/types';
 import { toast } from 'sonner';
-import { Checkbox } from '@/components/ui/checkbox'; // Importar Checkbox
+import { Checkbox } from '@/components/ui/checkbox';
 
 interface CheckoutFormProps {
   userData?: Propietario | null;
@@ -23,7 +23,8 @@ declare global {
 }
 
 export default function CheckoutForm({ userData }: CheckoutFormProps) {
-  const { cartItems, totalAmount, clearCart } = useCart();
+  // CORRECCIÓN: Se usan los nombres 'cart' y 'total' que provee el contexto.
+  const { cart, total, clearCart } = useCart();
   const router = useRouter();
   const [isProcessing, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -39,7 +40,8 @@ export default function CheckoutForm({ userData }: CheckoutFormProps) {
     const formData = new FormData(event.currentTarget);
 
     startTransition(async () => {
-      const result = await createSumupCheckout(cartItems, totalAmount, formData);
+      // CORRECCIÓN: Se pasan 'cart' y 'total' a la Server Action.
+      const result = await createSumupCheckout(cart, total, formData);
       
       if (!result.success || !result.checkoutId) {
         setError(result.error || "No se pudo iniciar el proceso de pago.");
@@ -57,7 +59,6 @@ export default function CheckoutForm({ userData }: CheckoutFormProps) {
             onResponse: (type: any, body: any) => {
                 if (body.status === 'SUCCESSFUL') {
                     clearCart();
-                    // Usamos el checkout_reference que ahora es nuestro orderId en la BD
                     router.push(`/pedido/confirmacion?orderId=${body.checkout_reference}`);
                 } else {
                      setError(`El pago ha fallado: ${body.error_message || 'Inténtelo de nuevo.'}`);
@@ -119,7 +120,8 @@ export default function CheckoutForm({ userData }: CheckoutFormProps) {
               <CardHeader><CardTitle>2. Resumen y Pago</CardTitle></CardHeader>
               <CardContent>
                  <div className="border-t mt-4 pt-4 space-y-2">
-                  <div className="flex justify-between font-bold text-lg"><p>Total a Pagar</p><p>{totalAmount.toFixed(2)} €</p></div>
+                  {/* CORRECCIÓN: Se usa 'total' para mostrar el importe. */}
+                  <div className="flex justify-between font-bold text-lg"><p>Total a Pagar</p><p>{total.toFixed(2)} €</p></div>
                 </div>
                 <div id="sumup-card-container" className="mt-6">
                     {isSubmitting && !sumupCard.current && (

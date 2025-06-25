@@ -77,7 +77,8 @@ export async function createSumupCheckout(cartItems: CartItem[], totalAmount: nu
       const productInfo = productsData?.find(p => p.id === cartItem.id);
       return {
         producto_id: cartItem.id,
-        cantidad: cartItem.cantidad,
+        // CORRECCIÓN: Se usa 'quantity' en lugar de 'cantidad' para coincidir con el tipo CartItem.
+        cantidad: cartItem.quantity,
         nombre: cartItem.nombre,
         precio_venta: productInfo?.precio_venta ?? 0,
         porcentaje_impuesto: productInfo?.porcentaje_impuesto ?? 0,
@@ -87,7 +88,7 @@ export async function createSumupCheckout(cartItems: CartItem[], totalAmount: nu
     const checkoutData = {
       checkout_reference: `VET-APP-${crypto.randomUUID()}`,
       amount: totalAmount,
-      currency: 'EUR' as const, // <-- Usamos 'as const' para asegurar el tipo
+      currency: 'EUR' as const,
       merchant_code: process.env.NEXT_PUBLIC_SUMUP_MERCHANT_CODE!,
       customer: {
         name: checkoutDetails.nombre_completo,

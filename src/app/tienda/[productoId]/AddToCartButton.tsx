@@ -1,21 +1,30 @@
 "use client";
 
 import { useState } from 'react';
-import { useCart, type CartItem } from '@/context/CartContext';
+import { useCart } from '@/context/CartContext';
 import { Button } from '@/components/ui/button';
 import { ShoppingCart, Check, PackageX } from 'lucide-react';
+// Se importa el tipo correcto para un producto del catálogo
+import type { ProductoCatalogo } from '@/app/dashboard/inventario/types';
 
 interface AddToCartButtonProps {
-  product: Omit<CartItem, 'cantidad'>;
+  // La prop 'product' ahora tiene el tipo correcto y más claro
+  product: ProductoCatalogo;
 }
 
 export default function AddToCartButton({ product }: AddToCartButtonProps) {
-  const { addToCart, cartItems } = useCart();
+  // CORRECCIÓN 1: Se usa 'cart' en lugar de 'cartItems' para que coincida con el contexto.
+  const { addToCart, cart } = useCart();
   const [isAdded, setIsAdded] = useState(false);
 
-  const itemInCart = cartItems.find(item => item.id === product.id);
-  const quantityInCart = itemInCart?.cantidad || 0;
-  const stockDisponible = product.stock_disponible;
+  // CORRECCIÓN 2: Se usa 'cart' para buscar el item.
+  const itemInCart = cart.find(item => item.id === product.id);
+  
+  // CORRECCIÓN 3: Se usa 'quantity' en lugar de 'cantidad'.
+  const quantityInCart = itemInCart?.quantity || 0;
+  
+  // La propiedad 'stock_disponible' ahora existe en el tipo ProductoCatalogo.
+  const stockDisponible = product.stock_disponible ?? 0;
   const isOutOfStock = stockDisponible <= 0;
   const canAddToCart = stockDisponible > quantityInCart;
 
