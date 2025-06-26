@@ -1,5 +1,5 @@
 // src/app/layout.tsx
-"use client"; // Se mueve "use client" al principio para todo el archivo
+"use client"; 
 
 import type { Metadata } from "next";
 import localFont from 'next/font/local';
@@ -11,6 +11,8 @@ import AccountButton from '@/components/ui/AccountButton';
 import { Toaster } from "sonner";
 import { usePathname } from 'next/navigation';
 import { ReactNode } from "react";
+// --- 1. Importa tu componente AppointmentLink ---
+import AppointmentLink from '@/components/ui/AppointmentLink'; 
 
 const geistSans = localFont({
   src: [
@@ -32,7 +34,6 @@ const geistMono = localFont({
 
 // Componente para el Header Público
 function PublicHeader() {
-  // CORRECCIÓN: Se usa 'totalItems' en lugar de 'itemCount'
   const { totalItems } = useCart();
   return (
     <header className="bg-white/80 backdrop-blur-md sticky top-0 z-50 border-b border-gray-200">
@@ -46,7 +47,12 @@ function PublicHeader() {
           <nav className="hidden md:flex md:gap-x-6">
             <Link href="/" className="text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors">Inicio</Link>
             <Link href="/tienda" className="text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors">Tienda</Link>
-            <Link href="/servicios/solicitar-cita" className="text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors">Pedir Cita</Link>
+            
+            {/* --- 2. Reemplaza el Link estático por tu componente --- */}
+            <AppointmentLink className="text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors">
+              Pedir Cita
+            </AppointmentLink>
+
             <Link href="/nosotros" className="text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors">Nosotros</Link>
             <Link href="/contacto" className="text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors">Contacto</Link>
           </nav>
@@ -63,7 +69,7 @@ function PublicHeader() {
   );
 }
 
-// Componente para el Footer Público
+// ... (El resto del archivo no necesita cambios)
 function PublicFooter() {
   return (
     <footer className="bg-gray-800 text-white">
