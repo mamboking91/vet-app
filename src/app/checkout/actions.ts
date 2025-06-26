@@ -3,9 +3,13 @@
 import { createServerActionClient } from "@supabase/auth-helpers-nextjs";
 import { cookies } from "next/headers";
 import { z } from "zod";
+import Stripe from 'stripe';
 import SumUp from '@sumup/sdk';
 import type { CartItem } from "@/context/CartContext";
+import type { ImagenProducto } from "@/app/dashboard/inventario/types";
 import crypto from 'crypto';
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
 const checkoutSchema = z.object({
   nombre_completo: z.string().min(1, "El nombre es requerido."),
@@ -18,98 +22,134 @@ const checkoutSchema = z.object({
   create_account: z.string().optional(),
 });
 
-export async function createSumupCheckout(cartItems: CartItem[], totalAmount: number, formData: FormData) {
-  const cookieStore = cookies();
-  const supabase = createServerActionClient({ cookies: () => cookieStore });
-
-  let { data: { user } } = await supabase.auth.getUser();
-
-  const rawFormData = Object.fromEntries(formData.entries());
-  const validatedFields = checkoutSchema.safeParse(rawFormData);
-
-  if (!validatedFields.success) {
-    return { success: false, error: "Datos de envío inválidos." };
-  }
-  
-  const { create_account, ...checkoutDetails } = validatedFields.data;
-  let isNewUser = false;
-
-  if (create_account === 'on' && !user) {
-    const tempPassword = crypto.randomBytes(16).toString('hex');
+// --- FUNCIÓN AUXILIAR PARA VALIDAR Y PREPARAR DATOS ---
+async function prepareCheckoutData(cartItems: CartItem[], formData: FormData) {
+    const supabase = createServerActionClient({ cookies: () => cookies() });
     
-    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-        email: checkoutDetails.email,
-        password: tempPassword,
-        options: {
-            data: {
-                nombre_completo: checkoutDetails.nombre_completo,
-            }
-        }
-    });
-
-    if (signUpError) {
-        if (!signUpError.message.includes("User already registered")) {
-            return { success: false, error: `No se pudo crear la cuenta: ${signUpError.message}` };
-        }
-    } else if (signUpData.user) {
-        isNewUser = true;
-        user = signUpData.user;
-        console.log(`Nueva cuenta creada para el invitado: ${user.email}`);
+    if (!cartItems || cartItems.length === 0) {
+        throw new Error("El carrito está vacío.");
     }
-  }
 
-  if (!cartItems || cartItems.length === 0) {
-    return { success: false, error: "El carrito está vacío." };
-  }
-
-  try {
-    const sumup = new SumUp({ apiKey: process.env.SUMUP_CLIENT_SECRET! });
+    const rawFormData = Object.fromEntries(formData.entries());
+    const validatedFields = checkoutSchema.safeParse(rawFormData);
+    if (!validatedFields.success) {
+        throw new Error("Datos de envío inválidos.");
+    }
 
     const productIds = cartItems.map(item => item.id);
     const { data: productsData, error: productsError } = await supabase
       .from('productos_inventario')
-      .select('id, nombre, precio_venta, porcentaje_impuesto')
+      .select('id, nombre, precio_venta, porcentaje_impuesto, imagenes')
       .in('id', productIds);
 
     if (productsError) throw new Error("No se pudieron obtener los detalles de los productos.");
 
-    const itemsParaMetadata = cartItems.map(cartItem => {
+    const itemsConPrecio = cartItems.map(cartItem => {
       const productInfo = productsData?.find(p => p.id === cartItem.id);
+      if (!productInfo || productInfo.precio_venta === null) {
+          throw new Error(`El producto '${cartItem.nombre}' no tiene un precio válido.`);
+      }
+      const precioBase = Number(productInfo.precio_venta);
+      const impuesto = Number(productInfo.porcentaje_impuesto ?? 0);
+      const precioFinalUnitario = precioBase * (1 + impuesto / 100);
+      
       return {
-        producto_id: cartItem.id,
-        // CORRECCIÓN: Se usa 'quantity' en lugar de 'cantidad' para coincidir con el tipo CartItem.
-        cantidad: cartItem.quantity,
-        nombre: cartItem.nombre,
-        precio_venta: productInfo?.precio_venta ?? 0,
-        porcentaje_impuesto: productInfo?.porcentaje_impuesto ?? 0,
+        ...cartItem,
+        precio_final_unitario: parseFloat(precioFinalUnitario.toFixed(2)),
+        imagenes: productInfo.imagenes as ImagenProducto[] | null,
       };
     });
 
+    return { validatedAddress: validatedFields.data, detailedItems: itemsConPrecio };
+}
+
+
+// --- ACCIÓN PARA STRIPE (ACTUALIZADA) ---
+export async function createStripeCheckout(cartItems: CartItem[], discountAmount: number, formData: FormData) {
+  try {
+    const { validatedAddress, detailedItems } = await prepareCheckoutData(cartItems, formData);
+
+    const line_items = detailedItems.map(item => ({
+      price_data: {
+        currency: 'eur',
+        product_data: {
+          name: item.nombre,
+          images: item.imagenes?.map((img: ImagenProducto) => img.url) || [],
+        },
+        unit_amount: Math.round(item.precio_final_unitario * 100),
+      },
+      quantity: item.quantity,
+    }));
+
+    // Aplicar el descuento como un cupón de Stripe sobre la marcha
+    const coupon = discountAmount > 0 ? await stripe.coupons.create({
+        amount_off: Math.round(discountAmount * 100),
+        currency: 'eur',
+        duration: 'once'
+    }) : null;
+
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      line_items,
+      mode: 'payment',
+      discounts: coupon ? [{ coupon: coupon.id }] : [],
+      success_url: `${process.env.NEXT_PUBLIC_SITE_URL}/pedido/confirmacion?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${process.env.NEXT_PUBLIC_SITE_URL}/carrito`,
+      metadata: {
+        // Guardamos los datos necesarios para crear el pedido en el webhook
+        direccion_envio_json: JSON.stringify(validatedAddress),
+        items_pedido_json: JSON.stringify(detailedItems.map(item => ({ 
+            producto_id: item.id, 
+            cantidad: item.quantity,
+            // Guardamos el precio final unitario que SÍ incluye impuestos.
+            precio_unitario: item.precio_final_unitario,
+        }))),
+      }
+    });
+
+    if (!session.url) throw new Error("No se pudo crear la URL de pago de Stripe.");
+    return { success: true, checkoutUrl: session.url };
+
+  } catch (error: any) {
+    return { success: false, error: `Error al crear el pago con Stripe: ${error.message}` };
+  }
+}
+
+
+// --- ACCIÓN PARA SUMUP (ACTUALIZADA) ---
+export async function createSumupCheckout(cartItems: CartItem[], discountAmount: number, formData: FormData) {
+  try {
+    const { validatedAddress, detailedItems } = await prepareCheckoutData(cartItems, formData);
+
+    const subtotal = detailedItems.reduce((acc, item) => acc + (item.precio_final_unitario * item.quantity), 0);
+    const totalFinal = subtotal - discountAmount;
+
+    const sumup = new SumUp({ apiKey: process.env.SUMUP_CLIENT_SECRET! });
+
     const checkoutData = {
       checkout_reference: `VET-APP-${crypto.randomUUID()}`,
-      amount: totalAmount,
+      amount: parseFloat(totalFinal.toFixed(2)),
       currency: 'EUR' as const,
       merchant_code: process.env.NEXT_PUBLIC_SUMUP_MERCHANT_CODE!,
       customer: {
-        name: checkoutDetails.nombre_completo,
-        email: checkoutDetails.email
+        name: validatedAddress.nombre_completo,
+        email: validatedAddress.email
       },
       metadata: {
-        customer_id: user?.id || null,
-        email_cliente: checkoutDetails.email,
-        direccion_envio_json: JSON.stringify(checkoutDetails),
-        items_pedido_json: JSON.stringify(itemsParaMetadata),
-        is_new_user: isNewUser,
+        direccion_envio_json: JSON.stringify(validatedAddress),
+        items_pedido_json: JSON.stringify(detailedItems.map(item => ({ 
+            producto_id: item.id, 
+            cantidad: item.quantity,
+            precio_unitario: item.precio_final_unitario
+        }))),
       },
       return_url: `${process.env.NEXT_PUBLIC_SITE_URL}/pedido/confirmacion`
     };
 
     const checkoutResponse = await sumup.checkouts.create(checkoutData);
-
     return { success: true, checkoutId: checkoutResponse.id };
 
   } catch (error: any) {
-    console.error("Error creating SumUp checkout:", error);
-    return { success: false, error: `Error al crear el pago: ${error.message}` };
+    return { success: false, error: `Error al crear el pago con SumUp: ${error.message}` };
   }
 }

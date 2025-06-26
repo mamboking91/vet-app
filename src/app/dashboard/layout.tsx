@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { 
   LayoutDashboard, Users, Dog, 
   CalendarDays, Archive, FileText, Wrench, Settings, LogOut,
-  ShoppingCart, Inbox, TicketPercent // Se añade el nuevo icono
+  ShoppingCart, Inbox, TicketPercent
 } from 'lucide-react';
 import LogoutButton from '@/components/ui/LogoutButton';
 import NavLink from './NavLink';
@@ -26,13 +26,15 @@ export default async function DashboardLayout({
   const cookieStore = cookies();
   const supabase = createServerComponentClient({ cookies: () => cookieStore });
 
-  // Se mantiene tu consulta original para el contador de solicitudes
+  // Contamos las solicitudes de citas (esto ya lo tenías)
   const { count: pendingRequestsCount } = await supabase
     .from('solicitudes_cita')
     .select('id', { count: 'exact', head: true })
     .eq('gestionada', false);
 
-  // Se añade el nuevo enlace de "Descuentos" a tu lista de navegación existente
+  // --- NUEVO: Contamos los pedidos en procesamiento ---
+  const { data: newOrdersCount } = await supabase.rpc('contar_pedidos_procesando');
+
   const navItems: NavItemData[] = [
     { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { 
@@ -46,9 +48,14 @@ export default async function DashboardLayout({
     { href: "/dashboard/procedimientos", label: "Procedimientos", icon: Wrench },
     { href: "/dashboard/citas", label: "Citas", icon: CalendarDays },
     { href: "/dashboard/facturacion", label: "Facturación", icon: FileText },
-    { href: "/dashboard/pedidos", label: "Pedidos", icon: ShoppingCart },
+    // --- ACTUALIZACIÓN: Añadimos el contador al link de Pedidos ---
+    { 
+      href: "/dashboard/pedidos", 
+      label: "Pedidos", 
+      icon: ShoppingCart,
+      badgeCount: newOrdersCount || 0
+    },
     { href: "/dashboard/inventario", label: "Inventario", icon: Archive },
-    // --- NUEVO ENLACE AÑADIDO AQUÍ ---
     { href: "/dashboard/descuentos", label: "Descuentos", icon: TicketPercent },
     { href: "/dashboard/informes", label: "Informes", icon: FileText, disabled: true },
   ];
@@ -57,8 +64,8 @@ export default async function DashboardLayout({
     { href: "/dashboard/configuracion", label: "Configuración", icon: Settings },
   ];
 
-  // Se utiliza tu estructura de layout original, sin cambios en el HTML/CSS
   return (
+    // ... (El resto del JSX se mantiene exactamente igual)
     <div className="flex h-screen bg-slate-50 dark:bg-slate-950">
       <aside 
         className="w-64 bg-gray-900 text-gray-200 p-4 flex flex-col shadow-lg print:hidden"

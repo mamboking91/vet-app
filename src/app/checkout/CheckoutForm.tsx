@@ -4,15 +4,18 @@ import { useState, useTransition, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Script from 'next/script';
 import { useCart } from '@/context/CartContext';
-import { createSumupCheckout } from './actions';
+// Importamos ambas acciones del servidor
+import { createSumupCheckout, createStripeCheckout } from './actions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { AlertTriangle, Loader2, Lock } from 'lucide-react';
+import { AlertTriangle, Loader2, Lock, CreditCard } from 'lucide-react';
 import type { Propietario } from '@/app/dashboard/propietarios/types';
 import { toast } from 'sonner';
 import { Checkbox } from '@/components/ui/checkbox';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { cn } from '@/lib/utils';
 
 interface CheckoutFormProps {
   userData?: Propietario | null;
@@ -23,53 +26,63 @@ declare global {
 }
 
 export default function CheckoutForm({ userData }: CheckoutFormProps) {
-  // CORRECCIÓN: Se usan los nombres 'cart' y 'total' que provee el contexto.
-  const { cart, total, clearCart } = useCart();
+  // Ahora también obtenemos 'discountAmount' del carrito
+  const { cart, total, montoDescuento, clearCart } = useCart();
   const router = useRouter();
   const [isProcessing, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [isSumupReady, setIsSumupReady] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<'stripe' | 'sumup'>('stripe');
   const sumupCard = useRef<any>(null);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError(null);
     setIsSubmitting(true);
+    if (sumupCard.current) {
+        sumupCard.current.unmount();
+    }
     
     const formData = new FormData(event.currentTarget);
 
     startTransition(async () => {
-      // CORRECCIÓN: Se pasan 'cart' y 'total' a la Server Action.
-      const result = await createSumupCheckout(cart, total, formData);
-      
-      if (!result.success || !result.checkoutId) {
-        setError(result.error || "No se pudo iniciar el proceso de pago.");
-        setIsSubmitting(false);
-        return;
-      }
-      
-      try {
-         if (sumupCard.current) {
-            sumupCard.current.unmount();
-         }
-         sumupCard.current = window.SumUpCard.mount({
-            id: 'sumup-card-container',
-            checkoutId: result.checkoutId,
-            onResponse: (type: any, body: any) => {
-                if (body.status === 'SUCCESSFUL') {
-                    clearCart();
-                    router.push(`/pedido/confirmacion?orderId=${body.checkout_reference}`);
-                } else {
-                     setError(`El pago ha fallado: ${body.error_message || 'Inténtelo de nuevo.'}`);
-                     setIsSubmitting(false);
-                }
-            },
-         });
-      } catch (e: any) {
-        console.error("Error mounting SumUp card:", e);
-        setError("Error al mostrar el formulario de pago.");
-        setIsSubmitting(false);
+      if (paymentMethod === 'stripe') {
+        // Llamamos a la acción de Stripe con el descuento
+        const result = await createStripeCheckout(cart, montoDescuento, formData);
+        if (result.success && result.checkoutUrl) {
+          router.push(result.checkoutUrl);
+        } else {
+          setError(result.error || "No se pudo procesar el pago con Stripe.");
+          setIsSubmitting(false);
+        }
+      } else { // SumUp
+        // Llamamos a la acción de SumUp con el descuento
+        const result = await createSumupCheckout(cart, montoDescuento, formData);
+        if (!result.success || !result.checkoutId) {
+          setError(result.error || "No se pudo iniciar el proceso de pago con SumUp.");
+          setIsSubmitting(false);
+          return;
+        }
+        
+        try {
+           sumupCard.current = window.SumUpCard.mount({
+              id: 'sumup-card-container',
+              checkoutId: result.checkoutId,
+              onResponse: (_: any, body: any) => {
+                  if (body.status === 'SUCCESSFUL') {
+                      clearCart();
+                      router.push(`/pedido/confirmacion?checkout_id=${body.checkout_reference}`);
+                  } else {
+                       setError(`El pago ha fallado: ${body.error_message || 'Inténtelo de nuevo.'}`);
+                       setIsSubmitting(false);
+                  }
+              },
+           });
+        } catch (e: any) {
+          setError("Error al mostrar el formulario de pago de SumUp.");
+          setIsSubmitting(false);
+        }
       }
     });
   };
@@ -79,6 +92,7 @@ export default function CheckoutForm({ userData }: CheckoutFormProps) {
         <Script
             src="https://gateway.sumup.com/gateway/ecom/card/v2/sdk.js"
             onLoad={() => setIsSumupReady(true)}
+            strategy="afterInteractive"
         />
         <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-2 gap-12">
           <Card>
@@ -120,16 +134,36 @@ export default function CheckoutForm({ userData }: CheckoutFormProps) {
               <CardHeader><CardTitle>2. Resumen y Pago</CardTitle></CardHeader>
               <CardContent>
                  <div className="border-t mt-4 pt-4 space-y-2">
-                  {/* CORRECCIÓN: Se usa 'total' para mostrar el importe. */}
                   <div className="flex justify-between font-bold text-lg"><p>Total a Pagar</p><p>{total.toFixed(2)} €</p></div>
                 </div>
-                <div id="sumup-card-container" className="mt-6">
-                    {isSubmitting && !sumupCard.current && (
-                        <div className="text-center p-4"><Loader2 className="h-6 w-6 animate-spin mx-auto"/><p className="text-sm text-muted-foreground mt-2">Cargando formulario de pago...</p></div>
-                    )}
-                </div>
+
+                <RadioGroup value={paymentMethod} onValueChange={(value) => setPaymentMethod(value as 'stripe' | 'sumup')} className="my-6 space-y-2">
+                    <Label className={cn("flex items-center gap-3 border rounded-lg p-4 cursor-pointer transition-all", paymentMethod === 'stripe' && 'bg-blue-50 border-blue-500 ring-2 ring-blue-500')}>
+                        <RadioGroupItem value="stripe" id="stripe"/>
+                        <CreditCard className="h-5 w-5"/>
+                        <span className="font-semibold">Pagar con Tarjeta (Stripe)</span>
+                    </Label>
+                    <Label className={cn("flex items-center gap-3 border rounded-lg p-4 cursor-pointer transition-all", paymentMethod === 'sumup' && 'bg-blue-50 border-blue-500 ring-2 ring-blue-500', !isSumupReady && 'opacity-50 cursor-not-allowed')}>
+                        <RadioGroupItem value="sumup" id="sumup" disabled={!isSumupReady}/>
+                        <CreditCard className="h-5 w-5"/>
+                        <span className="font-semibold">Pagar con Tarjeta (SumUp)</span>
+                         {!isSumupReady && <Loader2 className="h-4 w-4 animate-spin ml-auto"/>}
+                    </Label>
+                </RadioGroup>
+                
+                {paymentMethod === 'sumup' && (
+                    <div id="sumup-card-container" className="mt-6 min-h-[150px]">
+                        {isSubmitting && (
+                            <div className="text-center p-4 flex flex-col items-center justify-center">
+                                <Loader2 className="h-8 w-8 animate-spin mx-auto text-blue-600"/>
+                                <p className="text-sm text-muted-foreground mt-2">Cargando formulario de pago seguro...</p>
+                            </div>
+                        )}
+                    </div>
+                )}
+                
                 {error && (<div className="mt-4 bg-red-50 text-red-700 p-3 rounded-md text-sm flex items-center gap-2"><AlertTriangle className="h-4 w-4"/> {error}</div>)}
-                <Button type="submit" size="lg" className="w-full mt-6" disabled={isProcessing || !isSumupReady || isSubmitting}>
+                <Button type="submit" size="lg" className="w-full mt-6" disabled={isProcessing || isSubmitting || (paymentMethod === 'sumup' && !isSumupReady)}>
                   <Lock className="mr-2 h-4 w-4" />
                   {isSubmitting ? 'Procesando...' : 'Continuar al Pago Seguro'}
                 </Button>
