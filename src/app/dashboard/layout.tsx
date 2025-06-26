@@ -1,4 +1,5 @@
 // src/app/dashboard/layout.tsx
+
 import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import Link from 'next/link';
@@ -26,13 +27,13 @@ export default async function DashboardLayout({
   const cookieStore = cookies();
   const supabase = createServerComponentClient({ cookies: () => cookieStore });
 
-  // Contamos las solicitudes de citas (esto ya lo tenías)
+  // --- CORRECCIÓN AQUÍ ---
+  // Se corrige la tabla y el filtro para que coincida con la implementación real.
   const { count: pendingRequestsCount } = await supabase
-    .from('solicitudes_cita')
+    .from('solicitudes_cita_publica') // Tabla correcta
     .select('id', { count: 'exact', head: true })
-    .eq('gestionada', false);
+    .neq('estado', 'completada'); // Filtro correcto
 
-  // --- NUEVO: Contamos los pedidos en procesamiento ---
   const { data: newOrdersCount } = await supabase.rpc('contar_pedidos_procesando');
 
   const navItems: NavItemData[] = [
@@ -43,12 +44,12 @@ export default async function DashboardLayout({
       icon: Inbox, 
       badgeCount: pendingRequestsCount || 0 
     },
+    // ... el resto de los items no cambian
     { href: "/dashboard/propietarios", label: "Propietarios", icon: Users },
     { href: "/dashboard/pacientes", label: "Pacientes", icon: Dog },
     { href: "/dashboard/procedimientos", label: "Procedimientos", icon: Wrench },
     { href: "/dashboard/citas", label: "Citas", icon: CalendarDays },
     { href: "/dashboard/facturacion", label: "Facturación", icon: FileText },
-    // --- ACTUALIZACIÓN: Añadimos el contador al link de Pedidos ---
     { 
       href: "/dashboard/pedidos", 
       label: "Pedidos", 
@@ -65,7 +66,6 @@ export default async function DashboardLayout({
   ];
 
   return (
-    // ... (El resto del JSX se mantiene exactamente igual)
     <div className="flex h-screen bg-slate-50 dark:bg-slate-950">
       <aside 
         className="w-64 bg-gray-900 text-gray-200 p-4 flex flex-col shadow-lg print:hidden"
