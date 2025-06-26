@@ -5,6 +5,8 @@ import { Resend } from 'resend';
 import { CustomerOrderConfirmation } from '@/app/emails/CustomerOrderConfirmation';
 import { AdminOrderNotification } from '@/app/emails/AdminOrderNotification';
 
+export const dynamic = 'force-dynamic';
+
 // Inicialización de los servicios
 const supabaseAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
