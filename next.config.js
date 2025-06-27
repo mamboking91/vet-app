@@ -13,6 +13,10 @@ const nextConfig = {
       },
       {
         protocol: 'https',
+        hostname: 'images.unsplash.com',
+      },
+      {
+        protocol: 'https',
         hostname: 'rjkuylsjihqnfsodhmgq.supabase.co', // <-- Reemplaza con tu hostname si es diferente
         // port: '', // Generalmente no se necesita para https
         // pathname: '/storage/v1/object/public/clinic-assets/**', // Opcional: para ser más específico con la ruta
