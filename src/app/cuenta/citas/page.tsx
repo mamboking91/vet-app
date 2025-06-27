@@ -1,125 +1,155 @@
+// src/app/cuenta/citas/page.tsx
+
+import { createClient } from '@supabase/supabase-js';
 import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { format, parseISO } from 'date-fns';
-import { es } from 'date-fns/locale';
-import { CalendarClock, CheckCircle, Clock, PlusCircle, PawPrint } from 'lucide-react';
-import type { CitaConDetallesAnidados } from '@/app/dashboard/citas/types';
-import type { SolicitudCitaPublica } from '@/app/dashboard/solicitudes-citas/types';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Calendar, Clock, PawPrint, PlusCircle } from 'lucide-react';
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
 
-export const dynamic = 'force-dynamic';
+// --- TIPOS DE DATOS CORREGIDOS ---
+// Se añade 'paciente_nombre' que se rellenará después de las consultas.
+type Cita = {
+  id: string;
+  fecha_hora_inicio: string;
+  motivo: string | null;
+  estado: string;
+  paciente_id: string;
+  paciente_nombre?: string; // Nombre de la mascota que se añadirá
+};
 
-// Creamos un tipo de unión para manejar ambos casos
-type CitaOSolicitud = CitaConDetallesAnidados | SolicitudCitaPublica;
+// --- FUNCIÓN PARA OBTENER LAS CITAS (LÓGICA CORREGIDA) ---
+async function getCitasForUser(userId: string) {
+  const supabaseAdmin = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
 
-// Componente para mostrar tanto citas como solicitudes
-function CitaOSolicitudCard({ item }: { item: CitaOSolicitud }) {
-    // La función 'esSolicitud' ahora es un "type guard" que ayuda a TypeScript
-    const esSolicitud = (item: CitaOSolicitud): item is SolicitudCitaPublica => 'motivo_cita' in item;
+  // 1. Obtener todas las mascotas del usuario y sus nombres
+  const { data: pacientes, error: pacientesError } = await supabaseAdmin
+    .from('pacientes')
+    .select('id, nombre')
+    .eq('propietario_id', userId);
 
-    // --- CORRECCIÓN: Usamos el type guard para acceder a las propiedades de forma segura ---
-    const esSol = esSolicitud(item);
-    const fecha = esSol ? (item.fecha_preferida ? new Date(item.fecha_preferida + 'T12:00:00Z') : new Date()) : new Date(item.fecha_hora_inicio);
-    const motivo = esSol ? item.motivo_cita : item.motivo || item.tipo;
-    const nombreMascota = esSol ? item.nombre_mascota : item.pacientes?.nombre;
-    const estado = esSol ? item.estado : item.estado;
-    const esPasada = fecha < new Date() && !esSol;
-    const franjaHoraria = esSol ? item.franja_horaria : null;
+  if (pacientesError) {
+    console.error('Error al obtener las mascotas del usuario:', pacientesError);
+    return [];
+  }
+  if (!pacientes || pacientes.length === 0) {
+    return []; // El usuario no tiene mascotas
+  }
 
-    return (
-        <div className="flex items-start gap-4 p-4 border-b last:border-b-0">
-            <div className="flex flex-col items-center justify-center bg-gray-100 p-3 rounded-lg w-20 text-center">
-                <span className="text-sm font-bold text-blue-600 uppercase">{format(fecha, 'MMM', { locale: es })}</span>
-                <span className="text-2xl font-extrabold text-gray-800">{format(fecha, 'dd')}</span>
-                {!esSol && <span className="text-xs text-gray-500">{format(fecha, 'HH:mm')}h</span>}
-            </div>
-            <div className="flex-grow">
-                <div className="flex justify-between items-start">
-                    <h4 className="font-semibold text-gray-900">{motivo}</h4>
-                    <Badge variant={esSol ? 'outline' : (esPasada ? 'secondary' : 'default')} className="capitalize">
-                        {esSol ? "Pendiente" : estado}
-                    </Badge>
-                </div>
-                <p className="text-sm text-muted-foreground mt-1">
-                    Mascota: <span className="font-medium text-gray-700">{nombreMascota || 'No especificada'}</span>
-                </p>
-                {esSol && franjaHoraria && <p className="text-xs text-amber-600 mt-1">Preferencia: {franjaHoraria}</p>}
-            </div>
-        </div>
-    )
+  // Crear un mapa para buscar nombres de mascota por ID fácilmente
+  const pacientesMap = new Map(pacientes.map(p => [p.id, p.nombre]));
+  const pacienteIds = pacientes.map(p => p.id);
+
+  // 2. Obtener todas las citas de esas mascotas
+  const { data: citas, error: citasError } = await supabaseAdmin
+    .from('citas')
+    .select('id, fecha_hora_inicio, motivo, estado, paciente_id')
+    .in('paciente_id', pacienteIds)
+    .order('fecha_hora_inicio', { ascending: false });
+
+  if (citasError) {
+    console.error('Error al cargar las citas:', citasError);
+    return [];
+  }
+
+  // 3. Unir la información: añadir el nombre de la mascota a cada cita
+  const citasConNombre = citas.map(cita => ({
+    ...cita,
+    paciente_nombre: pacientesMap.get(cita.paciente_id) || 'Mascota no especificada',
+  }));
+
+  return citasConNombre as Cita[];
 }
 
-export default async function MisCitasPage() {
-  const supabase = createServerComponentClient({ cookies });
-  const { data: { user } } = await supabase.auth.getUser();
 
-  if (!user) {
+export default async function MisCitasPage() {
+  const cookieStore = cookies();
+  const supabase = createServerComponentClient({ cookies: () => cookieStore });
+
+  const { data: { session } } = await supabase.auth.getSession();
+
+  if (!session) {
     redirect('/login');
   }
 
-  const [citasResult, solicitudesResult] = await Promise.all([
-    supabase.from('citas').select(`*, pacientes (id, nombre)`).eq('propietario_id', user.id),
-    supabase.from('solicitudes_cita_publica').select(`*`).eq('propietario_id', user.id).eq('estado', 'pendiente')
-  ]);
-
-  const citas = (citasResult.data as CitaConDetallesAnidados[]) || [];
-  const solicitudes = (solicitudesResult.data as SolicitudCitaPublica[]) || [];
+  const citas = await getCitasForUser(session.user.id);
 
   const ahora = new Date();
-  const proximasCitas = citas.filter((c) => new Date(c.fecha_hora_inicio) >= ahora);
-  const citasPasadas = citas.filter((c) => new Date(c.fecha_hora_inicio) < ahora);
-  
-  // Función de ayuda para obtener la fecha de ordenación de forma segura
-  const getSortDate = (item: CitaOSolicitud) => {
-    if ('motivo_cita' in item && item.fecha_preferida) {
-      return new Date(item.fecha_preferida);
-    }
-    return new Date((item as CitaConDetallesAnidados).fecha_hora_inicio);
-  };
 
-  const itemsProximos: CitaOSolicitud[] = [...solicitudes, ...proximasCitas].sort((a,b) => 
-    getSortDate(a).getTime() - getSortDate(b).getTime()
+  const citasProximas = citas?.filter(c => new Date(c.fecha_hora_inicio) >= ahora) ?? [];
+  const citasPasadas = citas?.filter(c => new Date(c.fecha_hora_inicio) < ahora) ?? [];
+
+  const renderCita = (cita: Cita) => (
+    <Card key={cita.id} className="shadow-sm hover:shadow-md transition-shadow">
+      <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="flex-grow">
+          <div className="flex items-center gap-2 mb-2">
+            <PawPrint className="h-5 w-5 text-blue-600" />
+            {/* --- CORRECCIÓN: Se usa el campo 'paciente_nombre' --- */}
+            <p className="font-bold text-lg text-gray-800">{cita.paciente_nombre}</p>
+          </div>
+          <div className="flex items-center gap-2 text-sm text-gray-600">
+            <Calendar className="h-4 w-4" />
+            <span>{format(new Date(cita.fecha_hora_inicio), "EEEE, d 'de' MMMM 'de' yyyy", { locale: es })}</span>
+          </div>
+          <div className="flex items-center gap-2 text-sm text-gray-600">
+            <Clock className="h-4 w-4" />
+            <span>{format(new Date(cita.fecha_hora_inicio), "HH:mm 'h'", { locale: es })}</span>
+          </div>
+        </div>
+        <div className="flex flex-col items-start sm:items-end gap-2">
+           <p className="text-sm text-gray-500 capitalize">{cita.motivo || 'Cita general'}</p>
+           <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
+              cita.estado === 'Confirmada' ? 'bg-green-100 text-green-800' : 
+              cita.estado === 'Pendiente' ? 'bg-yellow-100 text-yellow-800' : 
+              'bg-gray-100 text-gray-800'
+            }`}>{cita.estado}</span>
+        </div>
+      </CardContent>
+    </Card>
   );
 
   return (
-    <div className="space-y-8">
-        <Card>
-            <CardHeader>
-                <div className="flex justify-between items-start">
-                    <div className="flex items-center gap-3">
-                        <Clock className="h-6 w-6 text-blue-600"/>
-                        <div>
-                            <CardTitle>Próximas Citas y Solicitudes</CardTitle>
-                            <CardDescription>Tus siguientes visitas y solicitudes pendientes de confirmar.</CardDescription>
-                        </div>
-                    </div>
-                    <Button asChild><Link href="/cuenta/citas/nueva"><PlusCircle className="mr-2 h-4 w-4"/>Solicitar Cita</Link></Button>
-                </div>
-            </CardHeader>
-            <CardContent className="p-0">
-                {itemsProximos.length > 0 ? (
-                    <div>{itemsProximos.map(item => <CitaOSolicitudCard key={item.id} item={item} />)}</div>
-                ) : (
-                    <p className="text-center py-10 text-muted-foreground">No tienes próximas citas ni solicitudes.</p>
-                )}
-            </CardContent>
-        </Card>
-        <Card>
-            <CardHeader>
-                 <div className="flex items-center gap-3"><CheckCircle className="h-6 w-6 text-green-600"/><div><CardTitle>Citas Anteriores</CardTitle><CardDescription>Tu historial de visitas a la clínica.</CardDescription></div></div>
-            </CardHeader>
-            <CardContent className="p-0">
-                {citasPasadas.length > 0 ? (
-                    <div>{citasPasadas.map(cita => <CitaOSolicitudCard key={cita.id} item={cita} />)}</div>
-                ) : (
-                    <p className="text-center py-10 text-muted-foreground">No tienes un historial de citas anteriores.</p>
-                )}
-            </CardContent>
-        </Card>
+    <div>
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold text-gray-800">Mis Citas</h1>
+        <Button asChild>
+          <Link href="/cuenta/citas/nueva">
+            <PlusCircle className="mr-2 h-4 w-4" />
+            Solicitar Nueva Cita
+          </Link>
+        </Button>
+      </div>
+
+      <div className="space-y-8">
+        <div>
+          <h2 className="text-2xl font-semibold text-gray-700 border-b pb-2 mb-4">Próximas Citas</h2>
+          {citasProximas.length > 0 ? (
+            <div className="space-y-4">
+              {citasProximas.map(renderCita)}
+            </div>
+          ) : (
+            <p className="text-gray-500">No tienes ninguna cita programada.</p>
+          )}
+        </div>
+        <div>
+          <h2 className="text-2xl font-semibold text-gray-700 border-b pb-2 mb-4">Citas Pasadas</h2>
+          {citasPasadas.length > 0 ? (
+            <div className="space-y-4">
+              {citasPasadas.map(renderCita)}
+            </div>
+          ) : (
+            <p className="text-gray-500">No tienes un historial de citas.</p>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
