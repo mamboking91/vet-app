@@ -6,10 +6,8 @@ import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { ESTADOS_PEDIDO, type EstadoPedido, type DireccionEnvio } from "./types";
-// --- 1. SE AÑADE LA IMPORTACIÓN PARA ENVIAR CORREOS ---
-import { sendOrderConfirmationEmail } from "@/app/emails/actions"; 
+import { sendOrderConfirmationEmail } from "@/app/emails/actions";
 
-// --- ACCIÓN PARA ACTUALIZAR EL ESTADO (MEJORADA) ---
 const updateStatusSchema = z.object({
   estado: z.enum(ESTADOS_PEDIDO, {
     errorMap: () => ({ message: "Por favor, selecciona un estado válido." }),
@@ -60,9 +58,6 @@ export async function updateOrderStatus(pedidoId: string, formData: FormData) {
     return { success: false, error: { message: `Error inesperado: ${e.message}` } };
   }
 }
-
-// --- El resto de las acciones se mantienen como en la respuesta anterior ---
-// --- (Incluyendo cancelarPedido, actualizarPedido y createManualOrder) ---
 
 export async function cancelarPedido(pedidoId: string) {
   try {
@@ -190,7 +185,6 @@ export async function createManualOrder(payload: ManualOrderPayload) {
   const cookieStore = cookies();
   const supabase = createServerActionClient({ cookies: () => cookieStore });
 
-  // --- 2. SE OBTIENEN LOS DATOS COMPLETOS DEL CLIENTE ---
   let direccionEnvio, emailCliente, nombreCompleto;
   if(clienteManual) {
     direccionEnvio = clienteManual;
@@ -206,7 +200,6 @@ export async function createManualOrder(payload: ManualOrderPayload) {
     throw new Error("No se proporcionaron datos de cliente.");
   }
 
-
   const rpcParams = {
       cliente_id_param: clienteId || null,
       cliente_manual_param: clienteManual || null,
@@ -221,8 +214,9 @@ export async function createManualOrder(payload: ManualOrderPayload) {
         throw new Error(error.message);
     }
     
-    // --- 3. SE LLAMA A LA FUNCIÓN DE ENVÍO DE CORREO ---
     if(emailCliente && nombreCompleto && direccionEnvio){
+      // --- INICIO DE LA CORRECCIÓN ---
+      // Se añade la propiedad 'customerName' que faltaba
       await sendOrderConfirmationEmail({
           pedidoId: orderId,
           fechaPedido: new Date(),
@@ -240,7 +234,9 @@ export async function createManualOrder(payload: ManualOrderPayload) {
           })),
           total: total,
           emailTo: emailCliente,
+          customerName: nombreCompleto.split(' ')[0] || nombreCompleto, // Se añade la prop
       });
+      // --- FIN DE LA CORRECCIÓN ---
     }
 
     revalidatePath("/dashboard/pedidos");

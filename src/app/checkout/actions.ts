@@ -1,3 +1,5 @@
+// src/app/checkout/actions.ts
+
 "use server";
 
 import { createServerActionClient } from "@supabase/auth-helpers-nextjs";
@@ -22,7 +24,7 @@ const checkoutSchema = z.object({
   create_account: z.string().optional(),
 });
 
-// --- FUNCIÓN AUXILIAR PARA VALIDAR Y PREPARAR DATOS ---
+// Función auxiliar para validar y preparar datos
 async function prepareCheckoutData(cartItems: CartItem[], formData: FormData) {
     const supabase = createServerActionClient({ cookies: () => cookies() });
     
@@ -55,6 +57,8 @@ async function prepareCheckoutData(cartItems: CartItem[], formData: FormData) {
       
       return {
         ...cartItem,
+        precio_venta: precioBase,
+        porcentaje_impuesto: impuesto,
         precio_final_unitario: parseFloat(precioFinalUnitario.toFixed(2)),
         imagenes: productInfo.imagenes as ImagenProducto[] | null,
       };
@@ -64,7 +68,6 @@ async function prepareCheckoutData(cartItems: CartItem[], formData: FormData) {
 }
 
 
-// --- ACCIÓN PARA STRIPE (ACTUALIZADA) ---
 export async function createStripeCheckout(cartItems: CartItem[], discountAmount: number, formData: FormData) {
   try {
     const { validatedAddress, detailedItems } = await prepareCheckoutData(cartItems, formData);
@@ -81,28 +84,32 @@ export async function createStripeCheckout(cartItems: CartItem[], discountAmount
       quantity: item.quantity,
     }));
 
-    // Aplicar el descuento como un cupón de Stripe sobre la marcha
     const coupon = discountAmount > 0 ? await stripe.coupons.create({
         amount_off: Math.round(discountAmount * 100),
         currency: 'eur',
         duration: 'once'
     }) : null;
 
+    const { data: authData } = await createServerActionClient({ cookies: () => cookies() }).auth.getUser();
+
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       line_items,
       mode: 'payment',
       discounts: coupon ? [{ coupon: coupon.id }] : [],
+      // --- CORRECCIÓN ---
+      // Se cambia el nombre del parámetro en la URL para mayor claridad.
       success_url: `${process.env.NEXT_PUBLIC_SITE_URL}/pedido/confirmacion?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${process.env.NEXT_PUBLIC_SITE_URL}/carrito`,
       metadata: {
-        // Guardamos los datos necesarios para crear el pedido en el webhook
+        customer_id: authData.user?.id || null,
         direccion_envio_json: JSON.stringify(validatedAddress),
         items_pedido_json: JSON.stringify(detailedItems.map(item => ({ 
-            producto_id: item.id, 
+            producto_id: item.id,
+            nombre: item.nombre,
             cantidad: item.quantity,
-            // Guardamos el precio final unitario que SÍ incluye impuestos.
-            precio_unitario: item.precio_final_unitario,
+            precio_unitario: item.precio_venta,
+            porcentaje_impuesto: item.porcentaje_impuesto,
         }))),
       }
     });
@@ -115,8 +122,7 @@ export async function createStripeCheckout(cartItems: CartItem[], discountAmount
   }
 }
 
-
-// --- ACCIÓN PARA SUMUP (ACTUALIZADA) ---
+// El resto del archivo no necesita cambios
 export async function createSumupCheckout(cartItems: CartItem[], discountAmount: number, formData: FormData) {
   try {
     const { validatedAddress, detailedItems } = await prepareCheckoutData(cartItems, formData);

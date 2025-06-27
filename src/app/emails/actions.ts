@@ -1,3 +1,5 @@
+// src/app/emails/actions.ts
+
 "use server";
 
 import { Resend } from 'resend';
@@ -16,6 +18,8 @@ interface DireccionEmail {
     provincia: string;
     codigo_postal: string;
 }
+
+// --- INICIO DE LA CORRECCIÓN 1 ---
 interface OrderDataForEmail {
   pedidoId: string;
   fechaPedido: Date;
@@ -24,16 +28,20 @@ interface OrderDataForEmail {
   total: number;
   emailTo: string; // El correo del cliente
   logoUrl?: string | null;
+  customerName: string; // Añadimos la propiedad que falta
 }
+// --- FIN DE LA CORRECCIÓN 1 ---
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 export async function sendOrderConfirmationEmail(orderData: OrderDataForEmail) {
   try {
     const { data, error } = await resend.emails.send({
-      from: 'Gomera Mascotas <info@gomeramascotas.com>', // CAMBIA ESTO por tu dominio verificado en Resend
+      from: 'Gomera Mascotas <info@gomeramascotas.com>',
       to: [orderData.emailTo],
       subject: `Confirmación de tu pedido #${orderData.pedidoId.substring(0, 8)}`,
+      // --- INICIO DE LA CORRECCIÓN 2 ---
+      // Pasamos la propiedad customerName al componente del email
       react: OrderConfirmationEmail({
         pedidoId: orderData.pedidoId,
         fechaPedido: orderData.fechaPedido,
@@ -41,7 +49,9 @@ export async function sendOrderConfirmationEmail(orderData: OrderDataForEmail) {
         items: orderData.items,
         total: orderData.total,
         logoUrl: orderData.logoUrl,
+        customerName: orderData.customerName, // La pasamos aquí
       }),
+      // --- FIN DE LA CORRECCIÓN 2 ---
     });
 
     if (error) {
