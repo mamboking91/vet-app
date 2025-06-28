@@ -1,4 +1,3 @@
-// src/app/dashboard/facturacion/nueva/page.tsx
 import React from 'react';
 import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
@@ -22,6 +21,7 @@ export default async function NuevaFacturaPage({ searchParams }: { searchParams?
   const supabase = createServerComponentClient({ cookies: () => cookieStore });
   const historialId = searchParams?.fromHistorial;
   let initialDataForForm = {};
+  let origenFactura: 'manual' | 'historial' = 'manual';
 
   // Obtener catálogos para los selectores del formulario
   const [propietariosResult, pacientesResult, procedimientosResult, productosResult] = await Promise.all([
@@ -46,6 +46,7 @@ export default async function NuevaFacturaPage({ searchParams }: { searchParams?
   const productosDisponibles: ProductoInventarioParaFactura[] = (productosResult.data || []);
 
   if (historialId) {
+    origenFactura = 'historial';
     const { data: historial } = await supabase
       .from('historiales_medicos')
       .select('*, pacientes(*, propietarios(id, nombre_completo))')
@@ -97,8 +98,6 @@ export default async function NuevaFacturaPage({ searchParams }: { searchParams?
 
       if (movimientos) {
         movimientos.forEach(mov => {
-          // --- CORRECCIÓN AQUÍ ---
-          // Verificamos que 'productos_inventario' sea un array y no esté vacío
           const productoInfo = mov.productos_inventario && !Array.isArray(mov.productos_inventario) 
             ? mov.productos_inventario 
             : Array.isArray(mov.productos_inventario) && mov.productos_inventario.length > 0 
@@ -118,7 +117,6 @@ export default async function NuevaFacturaPage({ searchParams }: { searchParams?
               lote_id: null,
             });
           }
-          // --- FIN DE LA CORRECCIÓN ---
         });
       }
       
@@ -150,6 +148,7 @@ export default async function NuevaFacturaPage({ searchParams }: { searchParams?
         procedimientosDisponibles={procedimientosDisponibles}
         productosDisponibles={productosDisponibles}
         initialData={initialDataForForm}
+        origen={origenFactura} 
       />
     </div>
   );

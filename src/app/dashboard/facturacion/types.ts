@@ -12,12 +12,10 @@ export const impuestoItemOpciones = [
 ] as const;
 export type ImpuestoItemValue = typeof impuestoItemOpciones[number]['value'];
 
-// --- NUEVO TIPO AÑADIDO ---
-// Tipo para los items dentro del JSONB de la tabla 'facturas'
 export type ItemFactura = {
   descripcion: string;
   cantidad: number;
-  precio_unitario: number; // Precio sin impuestos
+  precio_unitario: number; 
   porcentaje_impuesto: number;
   monto_impuesto: number;
   base_imponible: number;
@@ -153,7 +151,7 @@ export type FacturaItemFormData = {
 export type FacturaHeaderFormData = {
   propietario_id: string;
   paciente_id?: string;
-  numero_factura: string;
+  numero_factura?: string; // <-- CORRECCIÓN: Hecho opcional
   fecha_emision: string;
   fecha_vencimiento?: string;
   estado: EstadoFacturaPagoValue;

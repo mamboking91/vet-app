@@ -34,7 +34,7 @@ const ItemFacturaSchemaInternal = z.object({
 const FacturaHeaderSchemaInternal = z.object({
   propietario_id: z.string().uuid("Propietario inválido."),
   paciente_id: z.string().uuid("Paciente inválido.").optional().or(z.literal('')).transform(val => val === '' ? undefined : val),
-  numero_factura: z.string().min(1, "El número de factura es requerido."),
+  numero_factura: z.string().min(1, "El número de factura es requerido.").optional(), // Opcional, ya que lo generaremos
   fecha_emision: z.string().min(1, "La fecha de emisión es requerida.").refine((d) => !isNaN(Date.parse(d)), { message: "Fecha de emisión inválida." }),
   fecha_vencimiento: z.string().transform(v => v === '' ? undefined : v).refine((d) => d === undefined || !isNaN(Date.parse(d)), { message: "Fecha de vencimiento inválida." }).optional(),
   estado: z.enum(estadosFacturaValues).default('Borrador'),
@@ -58,6 +58,34 @@ const CreatePagoFacturaSchema = PagoFacturaSchemaBase;
 const UpdatePagoFacturaSchema = PagoFacturaSchemaBase.partial();
 
 // --- FUNCIONES AUXILIARES ---
+
+async function getNextInvoiceNumber(supabase: SupabaseClient, prefix: 'FACT' | 'MAN' | 'CLI') {
+    const currentYear = new Date().getFullYear();
+    const likePrefix = `${prefix}-${currentYear}-%`;
+
+    const { data, error } = await supabase
+      .from('facturas')
+      .select('numero_factura')
+      .like('numero_factura', likePrefix)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (error && error.code !== 'PGRST116') { // PGRST116 = 'No rows found'
+      console.error('Error fetching last invoice number:', error);
+      throw error;
+    }
+
+    if (!data) {
+      return `${prefix}-${currentYear}-0001`;
+    }
+
+    const lastNumberStr = data.numero_factura.split('-')[2];
+    const lastNumber = parseInt(lastNumberStr, 10);
+    const nextNumber = (lastNumber + 1).toString().padStart(4, '0');
+    return `${prefix}-${currentYear}-${nextNumber}`;
+}
+
 
 async function recalcularYActualizarEstadoFactura(supabase: SupabaseClient, facturaId: string) {
   try {
@@ -95,7 +123,7 @@ async function recalcularYActualizarEstadoFactura(supabase: SupabaseClient, fact
 
 // --- ACCIONES PRINCIPALES ---
 
-export async function crearFacturaConItems(payload: NuevaFacturaPayload) {
+export async function crearFacturaConItems(payload: NuevaFacturaPayload, origen: 'manual' | 'historial' | 'pedido' = 'manual') {
   try {
     const cookieStore = cookies();
     const supabase = createServerActionClient({ cookies: () => cookieStore });
@@ -103,16 +131,22 @@ export async function crearFacturaConItems(payload: NuevaFacturaPayload) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { success: false, error: { message: "Usuario no autenticado." } };
 
-    const validatedFields = FacturaConItemsSchema.safeParse(payload);
+    const FacturaPayloadSchema = FacturaConItemsSchema.omit({ numero_factura: true });
+    const validatedFields = FacturaPayloadSchema.safeParse(payload);
+
     if (!validatedFields.success) {
       return { success: false, error: { message: "Error de validación.", errors: validatedFields.error.flatten().fieldErrors } };
     }
 
     const { items, ...facturaHeaderData } = validatedFields.data;
 
-    const { data: facturaExistente } = await supabase.from('facturas').select('id').eq('numero_factura', facturaHeaderData.numero_factura).maybeSingle();
-    if (facturaExistente) {
-        return { success: false, error: { message: `El número de factura "${facturaHeaderData.numero_factura}" ya existe.`, errors: { numero_factura: ["Este número ya está en uso."] } } };
+    let numeroFactura;
+    if (origen === 'historial') {
+        numeroFactura = await getNextInvoiceNumber(supabase, 'CLI');
+    } else if (origen === 'pedido') {
+        numeroFactura = await getNextInvoiceNumber(supabase, 'FACT');
+    } else { // 'manual'
+        numeroFactura = await getNextInvoiceNumber(supabase, 'MAN');
     }
 
     let sumaBasesImponibles = 0;
@@ -132,7 +166,14 @@ export async function crearFacturaConItems(payload: NuevaFacturaPayload) {
     });
 
     const { data: nuevaFactura, error: dbErrorFactura } = await supabase
-      .from("facturas").insert([{ ...facturaHeaderData, subtotal: sumaBasesImponibles, monto_impuesto: sumaMontosImpuestos, total: sumaBasesImponibles + sumaMontosImpuestos, desglose_impuestos: desgloseImpuestosCalculado }]).select("id").single();
+      .from("facturas").insert([{ 
+          ...facturaHeaderData, 
+          numero_factura: numeroFactura, // <-- CORRECCIÓN APLICADA AQUÍ
+          subtotal: sumaBasesImponibles, 
+          monto_impuesto: sumaMontosImpuestos, 
+          total: sumaBasesImponibles + sumaMontosImpuestos, 
+          desglose_impuestos: desgloseImpuestosCalculado 
+      }]).select("id").single();
 
     if (dbErrorFactura || !nuevaFactura) {
       return { success: false, error: { message: `Error al crear la factura: ${dbErrorFactura?.message}` } };
@@ -177,7 +218,7 @@ export async function actualizarFacturaConItems(facturaId: string, payload: Nuev
         return { success: false, error: { message: "Solo se pueden editar facturas en estado 'Borrador'." } };
     }
 
-    if (facturaHeaderData.numero_factura !== facturaActual.numero_factura) {
+    if (facturaHeaderData.numero_factura && facturaHeaderData.numero_factura !== facturaActual.numero_factura) {
         const { data: facturaExistente } = await supabase.from('facturas').select('id').eq('numero_factura', facturaHeaderData.numero_factura).neq('id', facturaId).maybeSingle();
         if (facturaExistente) {
             return { success: false, error: { message: `El número de factura "${facturaHeaderData.numero_factura}" ya existe.`, errors: { numero_factura: ["Este número ya está en uso."] } } };

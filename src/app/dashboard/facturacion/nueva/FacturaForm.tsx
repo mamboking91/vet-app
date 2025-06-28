@@ -1,4 +1,3 @@
-// src/app/dashboard/facturacion/nueva/FacturaForm.tsx
 "use client"
 
 import type React from "react"
@@ -51,6 +50,7 @@ interface FacturaFormProps {
   productosDisponibles: ProductoInventarioParaFactura[]
   initialData?: Partial<FacturaHeaderFormData & { items: FacturaItemFormData[] }>
   facturaId?: string
+  origen: 'manual' | 'historial' | 'pedido';
 }
 
 type FieldErrors = {
@@ -69,6 +69,7 @@ export default function FacturaForm({
   productosDisponibles,
   initialData,
   facturaId,
+  origen,
 }: FacturaFormProps) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -77,7 +78,6 @@ export default function FacturaForm({
 
   const isEditMode = Boolean(facturaId && initialData)
 
-  const [numeroFactura, setNumeroFactura] = useState(initialData?.numero_factura || "")
   const [propietarioId, setPropietarioId] = useState(initialData?.propietario_id || "")
   const [pacienteId, setPacienteId] = useState(initialData?.paciente_id || "")
   const [fechaEmision, setFechaEmision] = useState<Date | undefined>(
@@ -127,11 +127,7 @@ export default function FacturaForm({
 
 
   useEffect(() => {
-    // Este efecto maneja la carga inicial de datos.
-    // Funciona tanto para editar una factura existente como para crear una nueva
-    // pre-poblada desde un historial médico.
     if (initialData && Object.keys(initialData).length > 0) {
-      setNumeroFactura(initialData.numero_factura || "");
       setPropietarioId(initialData.propietario_id || "");
       setPacienteId(initialData.paciente_id || "");
       
@@ -162,8 +158,6 @@ export default function FacturaForm({
         setItems([getDefaultNewItem()]);
       }
     } else {
-      // Si no hay initialData, reseteamos a un formulario completamente en blanco
-      setNumeroFactura("");
       setPropietarioId("");
       setPacienteId("");
       setFechaEmision(new Date());
@@ -277,10 +271,9 @@ export default function FacturaForm({
       procedimiento_id: item.procedimiento_id || null,
       producto_inventario_id: item.producto_inventario_id || null,
       lote_id: item.lote_id || null,
-    }))
+    }));
 
     const payload: NuevaFacturaPayload = {
-      numero_factura: numeroFactura,
       propietario_id: propietarioId,
       paciente_id: pacienteId || undefined,
       fecha_emision: fechaEmision ? format(fechaEmision, "yyyy-MM-dd") : "",
@@ -289,14 +282,14 @@ export default function FacturaForm({
       notas_cliente: notasCliente || undefined,
       notas_internas: notasInternas || undefined,
       items: payloadItems,
-    }
+    };
 
     startTransition(async () => {
-      let result
+      let result;
       if (isEditMode && facturaId) {
         result = await actualizarFacturaConItems(facturaId, payload)
       } else {
-        result = await crearFacturaConItems(payload)
+        result = await crearFacturaConItems(payload, origen)
       }
 
       if (!result.success) {
@@ -310,8 +303,7 @@ export default function FacturaForm({
       }
     })
   }
-
-  // El resto del JSX del return no cambia.
+  
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 p-4">
       <div className="max-w-6xl mx-auto">
@@ -350,11 +342,10 @@ export default function FacturaForm({
                   <Input
                     id="numero_factura"
                     name="numero_factura"
-                    value={numeroFactura}
-                    onChange={(e) => setNumeroFactura(e.target.value)}
-                    required
-                    className="h-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500/20"
-                    placeholder="Ej: FAC-2024-001"
+                    value={isEditMode ? initialData?.numero_factura : "Se generará automáticamente"}
+                    readOnly
+                    disabled
+                    className="h-10 bg-gray-100 dark:bg-slate-800 cursor-not-allowed"
                   />
                   {fieldErrors?.numero_factura && (
                     <p className="text-xs text-red-500">{fieldErrors.numero_factura[0]}</p>
@@ -387,7 +378,6 @@ export default function FacturaForm({
                   )}
                 </div>
               </div>
-
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-1.5">
                   <Label htmlFor="propietario_id_form" className="text-sm font-medium text-gray-700">
@@ -460,7 +450,7 @@ export default function FacturaForm({
               </div>
             </CardContent>
           </Card>
-
+          
           <Card className="shadow-lg border-0 bg-white/90 backdrop-blur-sm">
             <CardHeader className="bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-t-lg py-3">
               <CardTitle className="flex items-center justify-center gap-2 text-lg font-semibold">
