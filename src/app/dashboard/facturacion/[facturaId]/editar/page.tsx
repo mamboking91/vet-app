@@ -193,6 +193,7 @@ export default async function EditarFacturaPage({ params }: EditarFacturaPagePro
         productosDisponibles={productosParaFactura}
         initialData={initialDataForForm}
         facturaId={facturaData.id}
+        origen='manual'
       />
     </div>
   );
