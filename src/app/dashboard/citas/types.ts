@@ -141,4 +141,3 @@ export type DayInMonth = {
 }
 
 export type WeekInMonth = DayInMonth[]
-

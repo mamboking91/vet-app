@@ -1,3 +1,4 @@
+// src/app/dashboard/citas/page.tsx
 import { createServerComponentClient } from "@supabase/auth-helpers-nextjs"
 import { cookies } from "next/headers"
 import Link from "next/link"
@@ -25,24 +26,23 @@ import type { CitaConDetalles, WeekInMonth, DayInMonth } from "./types"
 
 export const dynamic = "force-dynamic"
 
-// Definimos el tipo local para los datos crudos de Supabase
 type CitaConArraysAnidados = {
-  id: string
-  fecha_hora_inicio: string
-  fecha_hora_fin: string | null
-  duracion_estimada_minutos: number | null
-  motivo: string | null
-  tipo: string | null
-  estado: string | null
-  pacientes: Array<{
     id: string
-    nombre: string
-    propietarios: Array<{
+    fecha_hora_inicio: string
+    fecha_hora_fin: string | null
+    duracion_estimada_minutos: number | null
+    motivo: string | null
+    tipo: string | null
+    estado: string | null
+    pacientes: {
       id: string
-      nombre_completo: string
-    }>
-  }> | null
-}
+      nombre: string
+      propietarios: {
+        id: string
+        nombre_completo: string
+      } | null
+    } | null
+  }
 
 interface CitasPageProps {
   searchParams?: {
@@ -101,31 +101,26 @@ export default async function CitasPage({ searchParams }: CitasPageProps) {
     )
   }
 
-  const citasDelMesRaw = (citasData || []) as CitaConArraysAnidados[]
-
-  const citasDelMesParaCalendario = citasDelMesRaw.map((citaRaw) => {
-    const pacientePrincipal = citaRaw.pacientes && citaRaw.pacientes.length > 0 ? citaRaw.pacientes[0] : null
-    const propietarioPrincipal =
-      pacientePrincipal && pacientePrincipal.propietarios && pacientePrincipal.propietarios.length > 0
-        ? pacientePrincipal.propietarios[0]
-        : null
+  const citasDelMesParaCalendario: CitaConDetalles[] = ((citasData as any) || []).map((citaRaw: any) => {
+    const paciente = citaRaw.pacientes;
+    const propietario = paciente?.propietarios;
 
     return {
       ...citaRaw,
-      pacientes: pacientePrincipal
+      pacientes: paciente
         ? {
-            id: pacientePrincipal.id,
-            nombre: pacientePrincipal.nombre,
-            propietarios: propietarioPrincipal
+            id: paciente.id,
+            nombre: paciente.nombre,
+            propietarios: propietario
               ? {
-                  id: propietarioPrincipal.id,
-                  nombre_completo: propietarioPrincipal.nombre_completo,
+                  id: propietario.id,
+                  nombre_completo: propietario.nombre_completo,
                 }
               : null,
           }
         : null,
     }
-  }) as CitaConDetalles[]
+  })
 
   const semanas: WeekInMonth[] = []
   let semanaActual: DayInMonth[] = []
@@ -162,10 +157,8 @@ export default async function CitasPage({ searchParams }: CitasPageProps) {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 dark:from-slate-900 dark:via-slate-800 dark:to-blue-950">
       <div className="container mx-auto py-8 px-4 md:px-6">
-        {/* Header con estadísticas */}
         <div className="mb-8">
           <div className="flex flex-col lg:flex-row justify-between lg:items-center gap-6">
-            {/* Navegación del mes */}
             <div className="flex items-center gap-4">
               <Button
                 variant="outline"
@@ -180,6 +173,7 @@ export default async function CitasPage({ searchParams }: CitasPageProps) {
 
               <div className="text-center">
                 <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+                  {/* ***** LÍNEA CORREGIDA ***** */}
                   {format(currentDate, "MMMM yyyy", { locale: es })}
                 </h1>
                 <p className="text-sm text-muted-foreground mt-1">Gestión de citas veterinarias</p>
@@ -209,7 +203,6 @@ export default async function CitasPage({ searchParams }: CitasPageProps) {
               </Button>
             </div>
 
-            {/* Botón de nueva cita */}
             <Button
               asChild
               size="lg"
@@ -221,8 +214,7 @@ export default async function CitasPage({ searchParams }: CitasPageProps) {
               </Link>
             </Button>
           </div>
-
-          {/* Estadísticas del mes */}
+          
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
             <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white p-4 rounded-xl shadow-lg">
               <div className="flex items-center justify-between">
@@ -255,8 +247,7 @@ export default async function CitasPage({ searchParams }: CitasPageProps) {
             </div>
           </div>
         </div>
-
-        {/* Calendario */}
+        
         <CalendarioMensualCitas semanas={semanas} currentDisplayMonth={currentDate} />
       </div>
     </div>

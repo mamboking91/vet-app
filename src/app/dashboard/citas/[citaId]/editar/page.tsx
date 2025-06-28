@@ -1,4 +1,4 @@
-// app/dashboard/citas/[citaId]/editar/page.tsx
+// src/app/dashboard/citas/[citaId]/editar/page.tsx
 import React from 'react';
 import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
@@ -51,9 +51,11 @@ export default async function EditarCitaPage({ params }: EditarCitaPageProps) {
   }
 
   const pacientesParaSelector: PacienteConPropietario[] = (pacientesData || []).map(p => {
+    // CORRECCIÓN: Manejar el caso de que `propietarios` sea un array
     const propietarioInfo = (p.propietarios && Array.isArray(p.propietarios) && p.propietarios.length > 0)
                               ? p.propietarios[0]
-                              : null;
+                              : (p.propietarios && !Array.isArray(p.propietarios) ? p.propietarios : null);
+    
     const propietarioNombre = propietarioInfo?.nombre_completo || 'Propietario Desconocido';
     const especieInfo = p.especie ? ` (${p.especie})` : '';
     
@@ -65,10 +67,6 @@ export default async function EditarCitaPage({ params }: EditarCitaPageProps) {
     };
   });
   
-  // CitaForm maneja el formateo de fecha internamente
-
-  // No necesitamos crear initialDataForForm ya que CitaForm usa citaExistente directamente
-
   return (
     <div className="container mx-auto py-10 px-4 md:px-6">
       <div className="flex items-center mb-6">

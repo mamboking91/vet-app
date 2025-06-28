@@ -1,3 +1,4 @@
+// src/app/dashboard/citas/CalendarioMensualCitas.tsx
 "use client"
 
 import type React from "react"
