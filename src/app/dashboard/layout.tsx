@@ -58,7 +58,7 @@ export default async function DashboardLayout({
     },
     { href: "/dashboard/inventario", label: "Inventario", icon: Archive },
     { href: "/dashboard/descuentos", label: "Descuentos", icon: TicketPercent },
-    { href: "/dashboard/informes", label: "Informes", icon: FileText, disabled: true },
+    { href: "/dashboard/informes", label: "Informes", icon: FileText },
   ];
   
   const settingsNavItems: NavItemData[] = [
