@@ -44,7 +44,7 @@ import {
 } from "lucide-react"
 
 interface ProductoCatalogoFormProps {
-  initialData?: Partial<ProductoCatalogoFormData>
+  initialData?: Partial<ProductoCatalogoFormData> & { variantes?: any[] }
   productoId?: string
 }
 
@@ -54,15 +54,14 @@ type FieldErrors = {
 
 const DEFAULT_PRODUCT_TAX_RATE: ImpuestoItemValue = "7"
 
-// Tipo para una variante en el estado del formulario
 type FormVariant = {
   id: number;
   sku: string;
-  precio_venta: string; // Precio base
-  precio_final: string; // Precio con impuesto
+  precio_venta: string;
+  precio_final: string;
   stock_inicial: string;
-  lastPriceInput: 'base' | 'final'; // Para saber cuál calcular
-  imagePreviewUrl?: string | null; // Para previsualizar la imagen de la variante
+  lastPriceInput: 'base' | 'final';
+  imagePreviewUrl?: string | null;
   atributos: Record<string, string>;
 };
 
@@ -74,31 +73,85 @@ export default function ProductoCatalogoForm({ initialData, productoId }: Produc
   const [success, setSuccess] = useState(false)
   const isEditMode = Boolean(productoId && initialData)
 
-  // --- Estados del Formulario ---
-  const [nombre, setNombre] = useState(initialData?.nombre || "")
-  const [tipo, setTipo] = useState<'simple' | 'variable'>(initialData?.tipo || 'simple');
-  const [requiereLote, setRequiereLote] = useState(initialData?.requiere_lote === undefined ? true : initialData.requiere_lote)
-  const [porcentajeImpuestoStr, setPorcentajeImpuestoStr] = useState<ImpuestoItemValue | string>(initialData?.porcentaje_impuesto || DEFAULT_PRODUCT_TAX_RATE)
+  const [nombre, setNombre] = useState("")
+  const [tipo, setTipo] = useState<'simple' | 'variable'>('simple');
+  const [requiereLote, setRequiereLote] = useState(true)
+  const [porcentajeImpuestoStr, setPorcentajeImpuestoStr] = useState<ImpuestoItemValue | string>(DEFAULT_PRODUCT_TAX_RATE)
   
-  // Estados para E-commerce
-  const [enTienda, setEnTienda] = useState(initialData?.en_tienda || false);
-  const [destacado, setDestacado] = useState(initialData?.destacado || false);
-  const [descripcionPublica, setDescripcionPublica] = useState(initialData?.descripcion_publica || "");
-  const [categoriasStr, setCategoriasStr] = useState(Array.isArray(initialData?.categorias_tienda) ? initialData.categorias_tienda.map(c => c.nombre).join(', ') : "");
-  const [images, setImages] = useState<ImagenProducto[]>(initialData?.imagenes || []);
+  const [enTienda, setEnTienda] = useState(false);
+  const [destacado, setDestacado] = useState(false);
+  const [descripcionPublica, setDescripcionPublica] = useState("");
+  const [categoriasStr, setCategoriasStr] = useState("");
+  const [images, setImages] = useState<ImagenProducto[]>([]);
 
-  // --- Estados para Producto Simple ---
-  const [simpleSku, setSimpleSku] = useState(initialData?.codigo_producto || "")
-  const [simplePrecioBase, setSimplePrecioBase] = useState(initialData?.precio_venta || "")
+  const [simpleSku, setSimpleSku] = useState("")
+  const [simplePrecioBase, setSimplePrecioBase] = useState("")
   const [simplePrecioFinal, setSimplePrecioFinal] = useState("")
   const [simpleLastInput, setSimpleLastInput] = useState<'base' | 'final'>('base')
-  const [simpleStock, setSimpleStock] = useState(initialData?.stock_no_lote_valor || "")
+  const [simpleStock, setSimpleStock] = useState("")
 
-  // --- Estados para Producto Variable ---
   const [attributeStr, setAttributeStr] = useState('Talla, Color');
   const [variants, setVariants] = useState<FormVariant[]>([{ id: Date.now(), sku: '', precio_venta: '', precio_final: '', stock_inicial: '', lastPriceInput: 'base', atributos: {} }]);
 
-  // --- Lógica de Cálculo de Precios ---
+  useEffect(() => {
+    if (initialData) {
+      const productType = initialData.tipo || 'simple';
+      const taxValue = initialData.porcentaje_impuesto || DEFAULT_PRODUCT_TAX_RATE;
+
+      setNombre(initialData.nombre || "");
+      setTipo(productType);
+      setRequiereLote(initialData.requiere_lote ?? true);
+      setPorcentajeImpuestoStr(taxValue);
+      setEnTienda(initialData.en_tienda || false);
+      setDestacado(initialData.destacado || false);
+      setDescripcionPublica(initialData.descripcion_publica || "");
+      setCategoriasStr(Array.isArray(initialData.categorias_tienda) ? initialData.categorias_tienda.map(c => c.nombre).join(', ') : "");
+      setImages(initialData.imagenes || []);
+
+      if (productType === 'simple') {
+        setSimpleSku(initialData.codigo_producto || "");
+        setSimpleStock(initialData.stock_no_lote_valor || "");
+        const initialBasePrice = initialData.precio_venta || "";
+        setSimplePrecioBase(initialBasePrice);
+        setSimpleLastInput('base');
+
+        const base = parseFloat(initialBasePrice);
+        const tax = parseFloat(taxValue as string);
+        if (!isNaN(base) && !isNaN(tax)) {
+          setSimplePrecioFinal((base * (1 + tax / 100)).toFixed(2));
+        } else {
+          setSimplePrecioFinal("");
+        }
+      } else if (productType === 'variable' && initialData.variantes && initialData.variantes.length > 0) {
+        const tax = parseFloat(taxValue as string);
+        
+        const loadedVariants = initialData.variantes.map((v, index) => {
+          const basePrice = v.precio_venta?.toString() || "";
+          const base = parseFloat(basePrice);
+          const finalPrice = (!isNaN(base) && !isNaN(tax))
+            ? (base * (1 + tax / 100)).toFixed(2)
+            : "";
+          return {
+            id: v.id ? Number(v.id) : Date.now() + index,
+            sku: v.sku || '',
+            precio_venta: basePrice,
+            precio_final: finalPrice,
+            stock_inicial: (v.stock_actual || '').toString(),
+            lastPriceInput: 'base' as const,
+            atributos: v.atributos || {},
+            imagePreviewUrl: v.imagen_url || null
+          };
+        });
+        setVariants(loadedVariants);
+        
+        if (loadedVariants.length > 0 && loadedVariants[0].atributos) {
+          const firstVariantAttributes = Object.keys(loadedVariants[0].atributos);
+          setAttributeStr(firstVariantAttributes.join(', '));
+        }
+      }
+    }
+  }, [initialData]);
+
   useEffect(() => {
     if (simpleLastInput === 'base') {
       const base = parseFloat(simplePrecioBase);
@@ -132,7 +185,6 @@ export default function ProductoCatalogoForm({ initialData, productoId }: Produc
       }
     }));
   }, [porcentajeImpuestoStr]);
-
 
   const attributeNames = attributeStr.split(',').map(s => s.trim()).filter(Boolean);
 

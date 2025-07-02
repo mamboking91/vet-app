@@ -1,3 +1,4 @@
+// src/app/page.tsx
 import Link from 'next/link';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from '@/components/ui/card';
@@ -8,7 +9,9 @@ import ProductImage from '@/components/ui/ProductImage';
 import React from 'react';
 import { cn } from '@/lib/utils';
 import { ArrowRight, ShoppingBag, HeartPulse, Stethoscope, Siren, Sparkles, LucideProps } from 'lucide-react';
+import { formatCurrency } from '@/lib/utils';
 
+// Mapa de iconos para el bloque de características
 const iconMap: { [key: string]: React.FC<LucideProps> } = { Stethoscope, HeartPulse, Siren, Sparkles };
 
 // --- Componentes para Renderizar cada Bloque ---
@@ -52,13 +55,43 @@ function FeaturesBlock({ contenido }: { contenido: ContenidoCaracteristicas }) {
   );
 }
 
+// Componente corregido para obtener los productos destacados
 async function FeaturedProductsBlock({ contenido }: { contenido: ContenidoProductosDestacados }) {
   const supabase = createServerComponentClient({ cookies: () => cookies() });
-  const [productsResult, clinicResult] = await Promise.all([ supabase.from('productos_inventario').select('id, nombre, precio_venta, porcentaje_impuesto, imagenes').eq('en_tienda', true).eq('destacado', true).limit(4), supabase.from('datos_clinica').select('logo_url').single() ]);
-  const { data: featuredProducts } = productsResult;
-  if (!featuredProducts?.length) return null;
-  const logoFallbackUrl = clinicResult.data?.logo_url || "https://placehold.co/600x600/e2e8f0/e2e8f0.png?text=Gomera+Mascotas";
-  return (<section className="py-16 bg-gray-50 dark:bg-slate-900"><div className="container mx-auto px-4 sm:px-6 lg:px-8"><h2 className="text-3xl font-bold text-center text-gray-800 dark:text-white mb-10">{contenido.titulo}</h2><div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">{featuredProducts.map(product => (<ProductCard key={product.id} product={product as any} fallbackImageUrl={logoFallbackUrl}/>))}</div></div></section>);
+  
+  // Se obtiene la URL del logo para usarla como fallback
+  const { data: clinicData } = await supabase.from('datos_clinica').select('logo_url').single();
+  const logoFallbackUrl = clinicData?.logo_url || "https://placehold.co/600x600/e2e8f0/e2e8f0.png?text=Gomera+Mascotas";
+
+  // Se consulta la VISTA `productos_inventario_con_stock` que tiene toda la información
+  const { data: featuredProducts } = await supabase
+    .from('productos_inventario_con_stock')
+    .select('producto_padre_id, nombre, precio_venta, porcentaje_impuesto, imagen_principal')
+    .eq('en_tienda', true)
+    .eq('destacado', true) // Filtro por la columna 'destacado'
+    .limit(4);
+
+  if (!featuredProducts || featuredProducts.length === 0) {
+    return null; // No renderizar nada si no hay productos destacados
+  }
+
+  // Asegurar que no se repitan productos si varias de sus variantes son destacadas
+  const uniqueProducts = Array.from(
+    new Map(featuredProducts.map(item => [item.producto_padre_id, item])).values()
+  );
+
+  return (
+    <section className="py-16 bg-gray-50 dark:bg-slate-900">
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+        <h2 className="text-3xl font-bold text-center text-gray-800 dark:text-white mb-10">{contenido.titulo}</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+          {uniqueProducts.map(product => (
+            <ProductCard key={product.producto_padre_id} product={product} fallbackImageUrl={logoFallbackUrl} />
+          ))}
+        </div>
+      </div>
+    </section>
+  );
 }
 
 function TextWithImageBlock({ contenido }: { contenido: ContenidoTextoConImagen }) {
@@ -96,19 +129,28 @@ function CtaBlock({ contenido }: { contenido: ContenidoCTA }) {
 }
 
 function ProductCard({ product, fallbackImageUrl }: { product: any, fallbackImageUrl: string }) {
-    const getPrimaryImage = (imagenes: any[] | null): string => {
-      if (!imagenes || imagenes.length === 0) return fallbackImageUrl;
-      const primary = imagenes.find(img => img.isPrimary);
-      return primary ? primary.url : imagenes[0].url;
-    }
-    const primaryImageUrl = getPrimaryImage(product.imagenes);
+    const primaryImageUrl = product.imagen_principal || fallbackImageUrl;
+    
     let precioFinalDisplay = 'Consultar';
     if (product.precio_venta !== null && product.porcentaje_impuesto !== null) {
       const precioFinal = Number(product.precio_venta) * (1 + Number(product.porcentaje_impuesto) / 100);
-      precioFinalDisplay = `${precioFinal.toFixed(2)} €`;
+      precioFinalDisplay = formatCurrency(precioFinal);
     }
+    
     return (
-      <Link href={`/tienda/${product.id}`} className="group"><Card className="w-full overflow-hidden transition-all duration-300 hover:shadow-xl hover:-translate-y-1 bg-white dark:bg-slate-800"><CardContent className="p-0"><div className="aspect-square overflow-hidden bg-gray-100 flex items-center justify-center"><ProductImage src={primaryImageUrl} alt={product.nombre} width={600} height={600} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"/></div><div className="p-4 border-t dark:border-slate-700"><h3 className="text-md font-semibold text-gray-800 dark:text-white truncate">{product.nombre}</h3><p className="text-lg font-bold text-blue-600 dark:text-blue-400 mt-2">{precioFinalDisplay}</p></div></CardContent></Card></Link>
+      <Link href={`/tienda/${product.producto_padre_id}`} className="group">
+        <Card className="w-full overflow-hidden transition-all duration-300 hover:shadow-xl hover:-translate-y-1 bg-white dark:bg-slate-800">
+          <CardContent className="p-0">
+            <div className="aspect-square overflow-hidden bg-gray-100 flex items-center justify-center">
+              <ProductImage src={primaryImageUrl} alt={product.nombre} width={600} height={600} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"/>
+            </div>
+            <div className="p-4 border-t dark:border-slate-700">
+              <h3 className="text-md font-semibold text-gray-800 dark:text-white truncate">{product.nombre.split(' - ')[0]}</h3>
+              <p className="text-lg font-bold text-blue-600 dark:text-blue-400 mt-2">{precioFinalDisplay}</p>
+            </div>
+          </CardContent>
+        </Card>
+      </Link>
     );
 }
 

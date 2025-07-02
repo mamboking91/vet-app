@@ -31,35 +31,34 @@ export default async function EditarProductoCatalogoPage({ params }: EditarProdu
     notFound();
   }
 
-  // 1. Obtener los datos del producto principal desde 'productos_catalogo'
-  const { data: producto, error: productoDbError } = await supabase
-    .from('productos_catalogo')
-    .select('*')
-    .eq('id', productoId)
-    .single<ProductoCatalogoDB>();
+  // --- INICIO DE LA CORRECCIÓN ---
+  // Se obtienen el producto y sus variantes en paralelo
+  const [productoResult, variantesResult] = await Promise.all([
+    supabase
+      .from('productos_catalogo')
+      .select('*')
+      .eq('id', productoId)
+      .single<ProductoCatalogoDB>(),
+    supabase
+      .from('producto_variantes')
+      .select('*')
+      .eq('producto_id', productoId)
+  ]);
+  
+  const { data: producto, error: productoDbError } = productoResult;
+  const { data: variantes, error: variantesError } = variantesResult;
 
   if (productoDbError || !producto) {
-    console.error(`[EditarProductoCatalogoPage] Error fetching producto con ID ${productoId} o no encontrado:`, productoDbError);
+    console.error(`[EditarProductoCatalogoPage] Error fetching producto con ID ${productoId}:`, productoDbError);
     notFound();
   }
   
-  let variantePorDefecto: ProductoVariante | null = null;
-  // Si el producto es simple, obtenemos su única variante para rellenar los campos de precio, SKU, etc.
-  if (producto.tipo === 'simple') {
-    const { data: varianteData, error: varianteError } = await supabase
-      .from('producto_variantes')
-      .select('*')
-      .eq('producto_id', producto.id)
-      .maybeSingle<ProductoVariante>();
-    
-    if (varianteError) {
-      console.error(`[EditarProductoCatalogoPage] Error fetching variante para producto simple ${productoId}:`, varianteError.message);
-    }
-    variantePorDefecto = varianteData;
+  if (variantesError) {
+      console.error(`[EditarProductoCatalogoPage] Error fetching variantes para producto ${productoId}:`, variantesError.message);
   }
-  
-  // 3. Preparamos initialData para el formulario, combinando datos del catálogo y de la variante por defecto
-  const initialDataForForm: Partial<ProductoCatalogoFormData> = {
+
+  // Se prepara initialData combinando los datos del catálogo y sus variantes
+  const initialDataForForm: Partial<ProductoCatalogoFormData> & { variantes?: ProductoVariante[] } = {
     // Datos del catálogo
     nombre: producto.nombre,
     tipo: producto.tipo,
@@ -70,12 +69,14 @@ export default async function EditarProductoCatalogoPage({ params }: EditarProdu
     imagenes: producto.imagenes || [],
     categorias_tienda: producto.categorias_tienda || [],
     porcentaje_impuesto: producto.porcentaje_impuesto?.toString(),
-
-    // Datos de la variante por defecto (solo para productos simples)
-    codigo_producto: variantePorDefecto?.sku ?? '',
-    precio_venta: variantePorDefecto?.precio_venta?.toString() || '',
-    stock_no_lote_valor: !producto.requiere_lote ? variantePorDefecto?.stock_actual?.toString() : undefined,
+    // Datos de las variantes
+    variantes: (variantes || []) as ProductoVariante[],
+    // Datos de la primera variante para productos simples
+    codigo_producto: producto.tipo === 'simple' && variantes?.[0]?.sku ? variantes[0].sku : '',
+    precio_venta: producto.tipo === 'simple' && variantes?.[0]?.precio_venta ? variantes[0].precio_venta.toString() : '',
+    stock_no_lote_valor: producto.tipo === 'simple' && !producto.requiere_lote && variantes?.[0]?.stock_actual ? variantes[0].stock_actual.toString() : '',
   };
+  // --- FIN DE LA CORRECCIÓN ---
 
   return (
     <div className="container mx-auto py-10 px-4 md:px-6">
