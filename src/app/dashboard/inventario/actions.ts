@@ -58,6 +58,14 @@ const AddStockSchema = z.object({
   fecha_caducidad: z.string().optional(),
 });
 
+const EntradaLoteSchema = z.object({
+  numero_lote: z.string().min(1, "El número de lote es requerido."),
+  stock_lote: z.coerce.number().int().positive("El stock de entrada debe ser un número positivo mayor que cero."),
+  fecha_entrada: z.string().nullable().transform(val => (val === '' || val === null) ? undefined : val).refine(val => val === undefined || (typeof val === 'string' && !isNaN(Date.parse(val))), { message: "Fecha de entrada inválida." }).transform(val => val ? new Date(val).toISOString().split('T')[0] : undefined).default(new Date().toISOString().split('T')[0]),
+  fecha_caducidad: z.string().nullable().transform(val => (val === '' || val === null) ? undefined : val).refine(val => val === undefined || (typeof val === 'string' && !isNaN(Date.parse(val))), { message: "Fecha de caducidad inválida."}).transform(val => val ? new Date(val).toISOString().split('T')[0] : undefined).optional(),
+});
+
+
 const MovimientoStockSchema = z.object({
   tipo_movimiento: z.enum(tiposDeMovimientoValues),
   cantidad: z.coerce.number().int().positive("La cantidad debe ser un número positivo."),
@@ -315,7 +323,6 @@ export async function actualizarVariante(varianteId: string, productoId: string,
   if (sku !== undefined) dataToUpdate.sku = sku || null;
   if (precio_venta !== undefined) dataToUpdate.precio_venta = precio_venta;
 
-  // Handle image upload
   const imageFile = formData.get('imagen') as File | null;
   if (imageFile && imageFile.size > 0) {
     const BUCKET_NAME = 'product-images';
@@ -437,6 +444,72 @@ export async function registrarMovimientoStock(varianteId: string, loteId: strin
         return { success: false, error: { message: `Error al procesar el movimiento de stock: ${error.message}` } };
     }
 }
+
+export async function registrarEntradaLote(productoId: string, formData: FormData) {
+    const cookieStore = cookies();
+    const supabase = createServerActionClient({ cookies: () => cookieStore });
+
+    if (!z.string().uuid().safeParse(productoId).success) {
+        return { success: false, error: { message: "ID de producto inválido." } };
+    }
+    
+    // Encontrar la variante asociada al producto. Asumimos que si se usa este formulario,
+    // el producto es simple y solo tiene una variante.
+    const { data: variante, error: varianteError } = await supabase
+        .from('producto_variantes')
+        .select('id')
+        .eq('producto_id', productoId)
+        .limit(1)
+        .single();
+        
+    if (varianteError || !variante) {
+        return { success: false, error: { message: "No se encontró una variante para este producto. Asegúrese de que el producto esté configurado correctamente." } };
+    }
+
+    const varianteId = variante.id;
+    const rawFormData = Object.fromEntries(formData.entries());
+    const validatedFields = EntradaLoteSchema.safeParse(rawFormData);
+    
+    if (!validatedFields.success) {
+        return { success: false, error: { message: "Datos de formulario inválidos.", errors: validatedFields.error.flatten().fieldErrors } };
+    }
+
+    const { numero_lote, stock_lote, fecha_entrada, fecha_caducidad } = validatedFields.data;
+
+    try {
+        const { error: insertError } = await supabase.from('lotes_producto').insert({
+            variante_id: varianteId,
+            numero_lote,
+            stock_lote,
+            fecha_entrada,
+            fecha_caducidad,
+            esta_activo: true,
+        });
+
+        if (insertError) {
+            if (insertError.code === '23505') { // Error de violación de unicidad
+                return { success: false, error: { message: `El número de lote "${numero_lote}" ya existe para este producto.` } };
+            }
+            throw insertError;
+        }
+
+        await supabase.from('movimientos_inventario').insert({
+            variante_id: varianteId,
+            producto_id: productoId,
+            lote_id: (await supabase.from('lotes_producto').select('id').eq('numero_lote', numero_lote).eq('variante_id', varianteId).single()).data?.id,
+            tipo_movimiento: 'Entrada Compra',
+            cantidad: stock_lote,
+            notas: `Entrada inicial del lote ${numero_lote}.`,
+        });
+
+        revalidatePath(`/dashboard/inventario/${productoId}`);
+        return { success: true };
+
+    } catch (error: any) {
+        return { success: false, error: { message: `Error de base de datos: ${error.message}` } };
+    }
+}
+
 
 export async function eliminarVariante(varianteId: string, productoId: string) {
   const cookieStore = cookies();
