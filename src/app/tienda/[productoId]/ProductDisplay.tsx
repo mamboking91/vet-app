@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import Image from 'next/image';
 import { Badge } from '@/components/ui/badge';
 import ProductGallery from '@/components/ui/ProductGallery';
@@ -19,27 +19,65 @@ interface ProductDisplayProps {
 
 export default function ProductDisplay({ producto, variantes, fallbackImageUrl }: ProductDisplayProps) {
   const [selectedVariant, setSelectedVariant] = useState<ProductoConStock | null>(variantes?.[0] || null);
-
-  // CORRECCIÓN: Se ha mejorado la lógica para mostrar la imagen de la variante seleccionada
-  const handleSelectVariant = (variant: ProductoConStock) => {
-    setSelectedVariant(variant);
-  };
+  // Añadimos un estado para la URL de la imagen principal
+  const [mainImageUrl, setMainImageUrl] = useState<string | null>(null);
 
   const allImages = useMemo(() => {
-    // La imagen de la variante seleccionada tiene prioridad
+    // La lógica de las imágenes se mantiene, pero ya no se usará para la imagen principal directamente
+    const imageSet = new Set<string>();
+    const combinedImages: ImagenProducto[] = [];
+
+    // Añadir imagen de la variante si existe
     if (selectedVariant?.imagen_principal) {
-        // Se crea una lista de imágenes, poniendo la de la variante primero
-        const primaryVariantImage: ImagenProducto = { 
-            url: selectedVariant.imagen_principal, 
-            isPrimary: true, 
-            order: -1 // Orden prioritario
-        };
-        const otherImages = (producto.imagenes || []).filter(img => img.url !== selectedVariant.imagen_principal);
-        return [primaryVariantImage, ...otherImages].sort((a,b) => a.order - b.order);
+        if (!imageSet.has(selectedVariant.imagen_principal)) {
+            combinedImages.push({
+                url: selectedVariant.imagen_principal, 
+                isPrimary: true, 
+                order: -1
+            });
+            imageSet.add(selectedVariant.imagen_principal);
+        }
     }
-    // Si no hay variante seleccionada o no tiene imagen, se usa la lógica original
-    return (producto.imagenes || []).sort((a,b) => a.order - b.order);
+    
+    // Añadir imágenes del producto padre
+    if (producto.imagenes) {
+        producto.imagenes.forEach(img => {
+            if (!imageSet.has(img.url)) {
+                combinedImages.push({ ...img, isPrimary: selectedVariant ? img.url === selectedVariant.imagen_principal : img.isPrimary });
+                imageSet.add(img.url);
+            }
+        });
+    }
+
+    return combinedImages.sort((a,b) => a.order - b.order);
   }, [selectedVariant, producto.imagenes]);
+
+  // useEffect para actualizar la imagen principal cuando cambia la variante o las imágenes
+  useEffect(() => {
+    // Prioridad 1: Imagen principal de la variante seleccionada
+    if (selectedVariant?.imagen_principal) {
+        setMainImageUrl(selectedVariant.imagen_principal);
+        return;
+    }
+    // Prioridad 2: Imagen primaria de la lista combinada de imágenes
+    const primaryImage = allImages.find(img => img.isPrimary) || allImages[0];
+    if (primaryImage) {
+        setMainImageUrl(primaryImage.url);
+    } else {
+    // Prioridad 3: Fallback si no hay imágenes
+        setMainImageUrl(fallbackImageUrl);
+    }
+  }, [selectedVariant, allImages, fallbackImageUrl]);
+
+
+  const handleSelectVariant = (variant: ProductoConStock) => {
+    setSelectedVariant(variant);
+    // No es necesario actualizar mainImageUrl aquí, el useEffect se encargará.
+  };
+
+  const handleThumbnailClick = (url: string) => {
+      setMainImageUrl(url);
+  };
 
   const precioFinalDisplay = selectedVariant?.precio_venta != null 
     ? formatCurrency(selectedVariant.precio_venta * (1 + selectedVariant.porcentaje_impuesto / 100)) 
@@ -56,6 +94,8 @@ export default function ProductDisplay({ producto, variantes, fallbackImageUrl }
               images={allImages}
               fallbackImageUrl={fallbackImageUrl}
               productName={producto.nombre}
+              mainImageUrl={mainImageUrl} // Pasamos el estado de la imagen principal
+              onThumbnailClick={handleThumbnailClick} // Pasamos la función para manejar el clic
             />
           </div>
 
@@ -66,11 +106,11 @@ export default function ProductDisplay({ producto, variantes, fallbackImageUrl }
               <p className="text-3xl text-gray-900">{precioFinalDisplay}</p>
               {stockDisponible > 0 ? (
                 <Badge variant="outline" className="text-green-600 border-green-300 bg-green-50">
-                  <PackageCheck className="h-4 w-4 mr-2" /> {stockDisponible} {stockDisponible === 1 ? 'unidad disponible' : 'unidades disponibles'}
+                  <PackageCheck className="mr-2 h-5 w-5" /> {stockDisponible} {stockDisponible === 1 ? 'unidad disponible' : 'unidades disponibles'}
                 </Badge>
               ) : (
                 <Badge variant="destructive">
-                  <PackageX className="h-4 w-4 mr-2" /> Agotado
+                  <PackageX className="mr-2 h-4 w-4" /> Agotado
                 </Badge>
               )}
             </div>

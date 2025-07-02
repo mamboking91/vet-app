@@ -55,6 +55,7 @@ function FeaturesBlock({ contenido }: { contenido: ContenidoCaracteristicas }) {
   );
 }
 
+// --- CORRECCIÓN ---
 // Componente corregido para obtener los productos destacados
 async function FeaturedProductsBlock({ contenido }: { contenido: ContenidoProductosDestacados }) {
   const supabase = createServerComponentClient({ cookies: () => cookies() });

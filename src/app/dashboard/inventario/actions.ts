@@ -246,6 +246,32 @@ export async function actualizarProductoCatalogo(id: string, formData: FormData)
         return { success: false, error: { message: `Error de base de datos al actualizar producto: ${dbError.message}` } };
     }
 
+    // --- NUEVA LÓGICA ---
+    // Después de actualizar el producto principal, buscamos la imagen primaria
+    // y la establecemos en la primera variante (o la única si es simple).
+    const primaryImage = finalImages.find(img => img.isPrimary);
+    const primaryImageUrl = primaryImage ? primaryImage.url : (finalImages[0]?.url || null);
+
+    if (primaryImageUrl) {
+      // Obtenemos la primera variante para asignarle la imagen principal.
+      // Esta es una simplificación; en un caso real podrías querer una lógica más compleja.
+      const { data: firstVariant } = await supabase
+        .from('producto_variantes')
+        .select('id')
+        .eq('producto_id', id)
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .single();
+      
+      if (firstVariant) {
+        await supabase
+          .from('producto_variantes')
+          .update({ imagen_principal: primaryImageUrl })
+          .eq('id', firstVariant.id);
+      }
+    }
+    // --- FIN DE LA NUEVA LÓGICA ---
+
     const variantsDataStr = formData.get('variants_data') as string;
     if (variantsDataStr) {
       const parsedVariants = VariantFormSchema.parse(JSON.parse(variantsDataStr));
@@ -316,7 +342,7 @@ export async function actualizarVariante(varianteId: string, productoId: string,
 
   const { sku, precio_venta } = validatedFields.data;
 
-  const dataToUpdate: { sku?: string | null; precio_venta?: number; imagen_url?: string; updated_at: string; } = {
+  const dataToUpdate: { sku?: string | null; precio_venta?: number; imagen_url?: string; imagen_principal?: string; updated_at: string; } = {
     updated_at: new Date().toISOString(),
   };
 
@@ -338,6 +364,8 @@ export async function actualizarVariante(varianteId: string, productoId: string,
 
     const { data: publicUrlData } = supabase.storage.from(BUCKET_NAME).getPublicUrl(filePath);
     dataToUpdate.imagen_url = publicUrlData.publicUrl;
+    // Asignamos también como imagen principal de la variante
+    dataToUpdate.imagen_principal = publicUrlData.publicUrl;
   }
 
   const { error: updateError } = await supabase
