@@ -1,26 +1,26 @@
-// src/context/CartContext.tsx
 "use client";
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import type { ProductoCatalogo } from '@/app/dashboard/inventario/types';
+// CORRECCIÓN: Importamos el tipo correcto para las variantes
+import type { ProductoConStock } from '@/app/dashboard/inventario/types';
 import type { CodigoDescuento } from '@/app/dashboard/descuentos/types';
 
-// Define la estructura de un item en el carrito
-export interface CartItem extends ProductoCatalogo {
+// CORRECCIÓN: El item del carrito ahora es una variante con stock
+export interface CartItem extends ProductoConStock {
   quantity: number;
 }
 
 // Define la estructura del contexto del carrito
 interface CartContextType {
   cart: CartItem[];
-  addToCart: (product: ProductoCatalogo, quantity: number) => void;
+  // CORRECCIÓN: La función ahora espera un ProductoConStock
+  addToCart: (product: ProductoConStock, quantity: number) => void;
   removeFromCart: (productId: string) => void;
   updateQuantity: (productId: string, quantity: number) => void;
   clearCart: () => void;
   totalItems: number;
   subtotal: number;
   total: number;
-  // --- NUEVOS CAMPOS PARA DESCUENTOS ---
   aplicarDescuento: (codigo: CodigoDescuento) => void;
   removerDescuento: () => void;
   descuentoAplicado: CodigoDescuento | null;
@@ -71,8 +71,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
   }, [cart, descuentoAplicado]);
 
   // --- LÓGICA DEL CARRITO ---
-  const addToCart = (product: ProductoCatalogo, quantity: number) => {
+  const addToCart = (product: ProductoConStock, quantity: number) => {
     setCart(prevCart => {
+      // El 'id' aquí es el ID de la variante, que es único.
       const existingItem = prevCart.find(item => item.id === product.id);
       if (existingItem) {
         return prevCart.map(item =>
@@ -98,7 +99,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     removerDescuento(); // También limpiar el descuento al vaciar el carrito
   };
   
-  // --- NUEVA LÓGICA DE DESCUENTOS ---
+  // --- LÓGICA DE DESCUENTOS ---
   const aplicarDescuento = (codigo: CodigoDescuento) => {
     setDescuentoAplicado(codigo);
   };
@@ -125,11 +126,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
       } else { // tipo 'fijo'
         montoDescuento = descuentoAplicado.valor;
       }
-      // Asegurarse de que el descuento no sea mayor que el subtotal
       montoDescuento = Math.min(montoDescuento, subtotal);
     } else {
-        // Si el subtotal baja de la compra mínima, el descuento se anula
-        // Idealmente, esto se maneja al aplicar, pero es una buena salvaguarda.
         removerDescuento();
     }
   }

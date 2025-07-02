@@ -6,7 +6,6 @@ import Link from 'next/link';
 import { Button } from "@/components/ui/button";
 import { PlusCircle } from 'lucide-react';
 import ProductosInventarioTable from './ProductosInventarioTable';
-// Asume que ProductoConStock se importa desde tu archivo de tipos centralizado para inventario
 import type { ProductoConStock } from './types'; 
 
 export const dynamic = 'force-dynamic';
@@ -15,29 +14,30 @@ export default async function InventarioPage() {
   const cookieStore = cookies();
   const supabase = createServerComponentClient({ cookies: () => cookieStore });
 
-  // Consulta a la VISTA con la cadena select limpia
+  // Consulta actualizada a la VISTA 'productos_inventario_con_stock'
+  // Seleccionamos todos los campos necesarios para la tabla, incluyendo los nuevos.
   const { data: productosData, error } = await supabase
     .from('productos_inventario_con_stock') 
     .select(
       `
         id,
+        producto_padre_id,
         nombre,
         descripcion,
         codigo_producto,
-        unidad,
-        stock_minimo,
         precio_venta,
         porcentaje_impuesto,
         requiere_lote,
+        en_tienda,
+        destacado,
         stock_total_actual,
         proxima_fecha_caducidad
       `
-    ) // Fin de la cadena select
+    )
     .order('nombre', { ascending: true });
 
   if (error) {
     console.error("Error fetching productos del inventario:", error);
-    // Devuelve el mensaje de error para que se vea en la UI si algo falla
     return (
         <div className="container mx-auto py-10 px-4 md:px-6">
             <p className="text-red-500">Error al cargar el inventario: {error.message}</p>
@@ -56,7 +56,7 @@ export default async function InventarioPage() {
         <Button asChild>
           <Link href="/dashboard/inventario/nuevo">
             <PlusCircle className="mr-2 h-5 w-5" />
-            Añadir Producto al Catálogo
+            Añadir Producto
           </Link>
         </Button>
       </div>

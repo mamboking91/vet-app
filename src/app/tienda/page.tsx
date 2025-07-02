@@ -1,40 +1,44 @@
 import Link from 'next/link';
 import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
-import type { ProductoCatalogo, ImagenProducto } from '@/app/dashboard/inventario/types';
-import ProductImage from '@/components/ui/ProductImage';
+import Image from 'next/image';
 import { Card, CardContent } from '@/components/ui/card';
-import { ShoppingBag, Search } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Search } from 'lucide-react';
+import { formatCurrency } from '@/lib/utils';
+import type { ProductoConStock } from '@/app/dashboard/inventario/types';
 import FiltrosTienda from './FiltrosTienda';
 
-// El tipo ahora incluye el stock para futuras mejoras
-type ProductoDeTienda = Pick<ProductoCatalogo, 'id' | 'nombre' | 'precio_venta' | 'imagenes' | 'porcentaje_impuesto' | 'categorias_tienda'> & { stock_total_actual: number | null };
+function ProductCard({ product }: { product: ProductoConStock }) {
+  // El precio que se muestra es el de la primera variante disponible.
+  const precioFinalDisplay = product.precio_venta != null ? formatCurrency(product.precio_venta * (1 + product.porcentaje_impuesto / 100)) : 'Consultar';
 
-function getPrimaryImage(imagenes: ImagenProducto[] | null, fallbackUrl: string): string {
-  if (!imagenes || imagenes.length === 0) return fallbackUrl;
-  const primaryImage = imagenes.find(img => img.isPrimary) || imagenes[0];
-  return primaryImage.url;
-}
+  // El nombre del producto se limpia para no mostrar los atributos en la tarjeta.
+  const nombreProducto = product.nombre.split(' - ')[0];
 
-function ProductCard({ product, fallbackImageUrl }: { product: ProductoDeTienda, fallbackImageUrl: string }) {
-  const primaryImageUrl = getPrimaryImage(product.imagenes, fallbackImageUrl);
-  let precioFinalDisplay = 'Consultar';
-  if (product.precio_venta !== null && product.porcentaje_impuesto !== null) {
-    const precioBase = Number(product.precio_venta);
-    const impuesto = Number(product.porcentaje_impuesto);
-    const precioFinal = precioBase * (1 + impuesto / 100);
-    precioFinalDisplay = `${precioFinal.toFixed(2)} €`;
-  }
   return (
-    <Link href={`/tienda/${product.id}`} className="group">
+    <Link href={`/tienda/${product.producto_padre_id}`} className="group">
       <Card className="w-full overflow-hidden transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
         <CardContent className="p-0">
           <div className="aspect-square overflow-hidden bg-gray-100 flex items-center justify-center">
-            <ProductImage src={primaryImageUrl} alt={product.nombre} width={600} height={600} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"/>
+            <Image
+              src={product.imagen_principal || '/placeholder.svg'}
+              alt={product.nombre}
+              width={600}
+              height={600}
+              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+            />
           </div>
           <div className="p-4 border-t">
-            <h3 className="text-md font-semibold text-gray-800 truncate">{product.nombre}</h3>
+            <h3 className="text-md font-semibold text-gray-800 truncate" title={nombreProducto}>
+              {nombreProducto}
+            </h3>
             <p className="text-lg font-bold text-blue-600 mt-2">{precioFinalDisplay}</p>
+            <div className="mt-2">
+              {product.stock_total_actual > 0 && product.stock_total_actual < 10 && (
+                <Badge variant="destructive">¡Últimas unidades!</Badge>
+              )}
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -56,12 +60,12 @@ export default async function TiendaPage({ searchParams }: TiendaPageProps) {
   const searchQuery = searchParams?.q;
   const categoryFilter = searchParams?.categoria;
 
-  // --- CORRECCIÓN: Usamos la vista `productos_inventario_con_stock` ---
+  // Usamos la vista `productos_inventario_con_stock` que ya tiene todo lo necesario
   let query = supabase
-    .from('productos_inventario_con_stock') // <-- VISTA CON STOCK
-    .select('id, nombre, precio_venta, porcentaje_impuesto, imagenes, categorias_tienda, stock_total_actual')
+    .from('productos_inventario_con_stock')
+    .select('*') // Seleccionamos todo para tener acceso a producto_padre_id
     .eq('en_tienda', true)
-    .gt('stock_total_actual', 0) // <-- SOLO PRODUCTOS CON STOCK > 0
+    .gt('stock_total_actual', 0)
     .order('nombre', { ascending: true });
 
   if (searchQuery) {
@@ -69,30 +73,33 @@ export default async function TiendaPage({ searchParams }: TiendaPageProps) {
   }
 
   if (categoryFilter) {
-    query = query.contains('categorias_tienda', `[{"nombre":"${categoryFilter}"}]`);
+    query = query.contains('categorias_tienda', [{ nombre: categoryFilter }]);
   }
 
-  const [productsResult, clinicResult, allProductsResult] = await Promise.all([
-    query,
-    supabase.from('datos_clinica').select('logo_url').single(),
-    supabase.from('productos_inventario').select('categorias_tienda').eq('en_tienda', true)
-  ]);
-  
-  const { data: products, error: productsError } = productsResult;
-  const { data: clinicData } = clinicResult;
+  const { data: allVariants, error: productsError } = await query;
 
   if (productsError) {
     console.error("Error fetching store products:", productsError);
+    // Manejo de error
   }
 
-  const allCategories = allProductsResult.data?.flatMap(
+  // --- LÓGICA PARA MOSTRAR UN SOLO PRODUCTO AUNQUE TENGA MÚLTIPLES VARIANTES ---
+  const uniqueProducts = Array.from(
+    new Map(allVariants?.map(variant => [variant.producto_padre_id, variant])).values()
+  ) as ProductoConStock[];
+  // --------------------------------------------------------------------------
+
+  const { data: allProductsResult } = await supabase
+    .from('productos_catalogo')
+    .select('categorias_tienda')
+    .eq('en_tienda', true);
+  
+  const allCategories = allProductsResult?.flatMap(
     (p: { categorias_tienda: { nombre: string }[] | null }) => 
       p.categorias_tienda?.map((c: { nombre: string }) => c.nombre) || []
   ) || [];
   
   const uniqueCategories = [...new Set(allCategories.filter(Boolean))].sort();
-
-  const logoFallbackUrl = clinicData?.logo_url || "https://placehold.co/600x600/e2e8f0/e2e8f0?text=Gomera+Mascotas";
   
   return (
     <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -105,13 +112,12 @@ export default async function TiendaPage({ searchParams }: TiendaPageProps) {
       
       <FiltrosTienda categorias={uniqueCategories} />
 
-      {products && products.length > 0 ? (
+      {uniqueProducts && uniqueProducts.length > 0 ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8">
-          {products.map(product => (
+          {uniqueProducts.map(product => (
             <ProductCard 
-              key={product.id} 
-              product={product as ProductoDeTienda} 
-              fallbackImageUrl={logoFallbackUrl}
+              key={product.id} // Usamos el id de la variante como key único para React
+              product={product}
             />
           ))}
         </div>

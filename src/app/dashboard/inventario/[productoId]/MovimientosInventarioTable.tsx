@@ -1,4 +1,3 @@
-// app/dashboard/inventario/[productoId]/MovimientosInventarioTable.tsx
 "use client";
 
 import React from 'react';
@@ -15,7 +14,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
-// Importamos el tipo específico que ahora incluye numero_lote_display
+// Importamos el tipo específico que ahora incluye ambas propiedades de display
 import type { MovimientoInventarioConDetallesVista } from './page'; 
 
 interface MovimientosInventarioTableProps {
@@ -57,6 +56,7 @@ export default function MovimientosInventarioTable({ movimientos }: MovimientosI
             <TableRow>
               <TableHead className="font-semibold">Fecha Movimiento</TableHead>
               <TableHead className="font-semibold">Tipo</TableHead>
+              <TableHead className="font-semibold">Variante</TableHead>
               <TableHead className="font-semibold">Lote Nº</TableHead>
               <TableHead className="font-semibold text-center">Cantidad</TableHead>
               <TableHead className="font-semibold hidden md:table-cell">Notas</TableHead>
@@ -75,7 +75,9 @@ export default function MovimientosInventarioTable({ movimientos }: MovimientosI
                     {movimiento.tipo_movimiento || '-'}
                   </Badge>
                 </TableCell>
-                {/* Usamos el campo aplanado numero_lote_display */}
+                {/* CORRECCIÓN: Usamos el nuevo campo variante_display */}
+                <TableCell>{movimiento.variante_display || 'N/A'}</TableCell>
+                {/* CORRECCIÓN: Usamos el campo corregido numero_lote_display */}
                 <TableCell>{movimiento.numero_lote_display || 'N/A'}</TableCell>
                 <TableCell className="text-center">{movimiento.cantidad}</TableCell>
                 <TableCell className="hidden md:table-cell max-w-xs truncate" title={movimiento.notas || ''}>

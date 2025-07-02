@@ -28,7 +28,8 @@ import {
   Euro,
   Calculator,
   BarChart2,
-  Store, // <-- Importamos el nuevo icono
+  Store,
+  Boxes, // Icono para representar el producto padre
 } from "lucide-react"
 import type { ProductoConStock } from "./types"
 import { eliminarProductoCatalogo } from "./actions"
@@ -47,10 +48,10 @@ export default function ProductosInventarioTable({ productos }: ProductosInventa
   const [isAddStockModalOpen, setIsAddStockModalOpen] = useState(false)
   const [selectedProductForStock, setSelectedProductForStock] = useState<ProductoConStock | null>(null)
 
-  const handleEliminarProducto = async (productoId: string) => {
+  const handleEliminarProducto = async (productoPadreId: string) => {
     setDeleteError(null)
     startDeleteTransition(async () => {
-      const result = await eliminarProductoCatalogo(productoId)
+      const result = await eliminarProductoCatalogo(productoPadreId)
       if (!result.success) {
         setDeleteError(result.error?.message || "Ocurrió un error al eliminar el producto.")
       } else {
@@ -115,7 +116,7 @@ export default function ProductosInventarioTable({ productos }: ProductosInventa
           <div className="col-span-3 font-bold text-gray-800">
             <div className="flex items-center gap-2">
               <Package className="h-4 w-4 text-blue-600" />
-              Producto
+              Producto / Variante
             </div>
           </div>
           <div className="col-span-1 font-bold text-gray-800 text-center">
@@ -125,10 +126,7 @@ export default function ProductosInventarioTable({ productos }: ProductosInventa
             </div>
           </div>
           <div className="col-span-1 hidden md:block font-bold text-gray-800 text-center">
-            <div className="flex flex-col items-center gap-1">
-              <BarChart2 className="h-4 w-4 text-amber-600 flex-shrink-0" />
-              <span className="text-xs">Mínimo</span>
-            </div>
+            {/* El stock mínimo se define a nivel de producto padre, no de variante. Se podría mostrar, pero por ahora se omite para simplificar. */}
           </div>
           <div className="col-span-2 font-bold text-gray-800 text-center">
             <div className="flex flex-col items-center gap-1">
@@ -161,7 +159,7 @@ export default function ProductosInventarioTable({ productos }: ProductosInventa
 
             return (
               <div
-                key={producto.id}
+                key={producto.id} // El ID de la variante es una clave única para la fila
                 className={`
                   grid grid-cols-12 gap-4 py-3 px-4
                   hover:bg-gradient-to-r hover:from-blue-50/50 hover:to-indigo-50/50 
@@ -170,61 +168,42 @@ export default function ProductosInventarioTable({ productos }: ProductosInventa
                 `}
               >
                 <div className="col-span-3">
+                  {/* El enlace principal ahora apunta al producto padre */}
                   <Link
-                    href={`/dashboard/inventario/${producto.id}`}
+                    href={`/dashboard/inventario/${producto.producto_padre_id}`}
                     className="flex items-center gap-3 hover:text-blue-700 transition-colors"
                   >
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-semibold text-sm shadow-md">
-                      {producto.nombre.charAt(0).toUpperCase()}
+                    <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-semibold text-sm shadow-md">
+                      <Boxes className="h-5 w-5"/>
                     </div>
                     <div>
                       <div className="font-semibold text-gray-900">{producto.nombre}</div>
                       <div className="flex items-center gap-2 mt-1">
-                        <div className="text-xs text-gray-500">ID: {producto.id.slice(0, 8)}...</div>
+                        <div className="text-xs text-gray-500">SKU: {producto.codigo_producto || 'N/A'}</div>
                         {producto.requiere_lote && (
                           <Badge variant="outline" className="text-xs bg-blue-100 text-blue-700 border-blue-300">
                             Lotes
                           </Badge>
                         )}
-                        {/* --- NUEVO INDICADOR DE TIENDA --- */}
                         {producto.en_tienda && (
                             <Badge variant="outline" className="text-xs bg-pink-100 text-pink-700 border-pink-300">
                                 <Store className="h-3 w-3 mr-1" />
                                 En tienda
                             </Badge>
                         )}
-                        {/* ----------------------------- */}
                       </div>
                     </div>
                   </Link>
                 </div>
 
                 <div className="col-span-1 flex items-center justify-center">
-                  <div className="flex flex-col items-center">
-                    <Badge
-                      variant={
-                        producto.stock_minimo !== null && producto.stock_total_actual <= producto.stock_minimo
-                          ? "destructive"
-                          : producto.stock_minimo !== null && producto.stock_total_actual <= producto.stock_minimo * 1.2
-                            ? "secondary"
-                            : "default"
-                      }
-                      className={cn(
-                        "px-2.5 py-1",
-                        producto.stock_minimo !== null &&
-                          producto.stock_total_actual > producto.stock_minimo &&
-                          producto.stock_total_actual <= producto.stock_minimo * 1.2 &&
-                          "bg-yellow-100 text-yellow-700 border-yellow-300 hover:bg-yellow-200",
-                      )}
-                    >
+                    <Badge variant={producto.stock_total_actual > 0 ? "default" : "destructive"}>
                       {producto.stock_total_actual}
                     </Badge>
-                    <span className="text-xs text-gray-500 mt-1">({producto.unidad || "u"})</span>
-                  </div>
                 </div>
-
+                
                 <div className="col-span-1 hidden md:flex items-center justify-center">
-                  <span className="text-sm text-gray-600">{producto.stock_minimo ?? "-"}</span>
+                  {/* Columna vacía por ahora */}
                 </div>
 
                 <div className="col-span-2 flex items-center justify-center">
@@ -245,7 +224,7 @@ export default function ProductosInventarioTable({ productos }: ProductosInventa
                   <Button
                     variant="ghost"
                     size="icon"
-                    title="Añadir Stock / Registrar Entrada"
+                    title="Añadir Stock a esta Variante"
                     onClick={() => handleOpenAddStockModal(producto)}
                     className="h-8 w-8 bg-green-50 text-green-700 hover:bg-green-100 hover:text-green-800 rounded-full"
                   >
@@ -256,10 +235,10 @@ export default function ProductosInventarioTable({ productos }: ProductosInventa
                     asChild
                     variant="ghost"
                     size="icon"
-                    title="Gestionar Lotes/Detalles"
+                    title="Gestionar Producto Padre"
                     className="h-8 w-8 bg-blue-50 text-blue-700 hover:bg-blue-100 hover:text-blue-800 rounded-full"
                   >
-                    <Link href={`/dashboard/inventario/${producto.id}`}>
+                    <Link href={`/dashboard/inventario/${producto.producto_padre_id}`}>
                       <Eye className="h-4 w-4" />
                     </Link>
                   </Button>
@@ -268,10 +247,10 @@ export default function ProductosInventarioTable({ productos }: ProductosInventa
                     asChild
                     variant="ghost"
                     size="icon"
-                    title="Editar Producto (Catálogo)"
+                    title="Editar Producto Padre (Catálogo)"
                     className="h-8 w-8 bg-amber-50 text-amber-700 hover:bg-amber-100 hover:text-amber-800 rounded-full"
                   >
-                    <Link href={`/dashboard/inventario/${producto.id}/editar`}>
+                    <Link href={`/dashboard/inventario/${producto.producto_padre_id}/editar`}>
                       <Edit3 className="h-4 w-4" />
                     </Link>
                   </Button>
@@ -282,7 +261,7 @@ export default function ProductosInventarioTable({ productos }: ProductosInventa
                         variant="ghost"
                         size="icon"
                         className="h-8 w-8 bg-red-50 text-red-700 hover:bg-red-100 hover:text-red-800 rounded-full"
-                        title="Eliminar Producto del Catálogo"
+                        title="Eliminar Producto Padre y todas sus variantes"
                         disabled={isDeleting}
                       >
                         <Trash2 className="h-4 w-4" />
@@ -302,8 +281,7 @@ export default function ProductosInventarioTable({ productos }: ProductosInventa
                         </div>
                         <AlertDialogDescription className="text-gray-600 leading-relaxed">
                           Esta acción <strong>no se puede deshacer</strong>. Se eliminará permanentemente el producto
-                          <span className="font-semibold text-gray-900"> "{producto.nombre}"</span>. Si el producto
-                          tiene lotes o está en uso, la eliminación podría fallar o tener consecuencias.
+                          <span className="font-semibold text-gray-900"> "{producto.nombre.split(' - ')[0]}"</span> y <strong>TODAS</strong> sus variantes asociadas.
                         </AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter className="gap-2">
@@ -314,7 +292,7 @@ export default function ProductosInventarioTable({ productos }: ProductosInventa
                           Cancelar
                         </AlertDialogCancel>
                         <AlertDialogAction
-                          onClick={() => handleEliminarProducto(producto.id)}
+                          onClick={() => handleEliminarProducto(producto.producto_padre_id)}
                           disabled={isDeleting}
                           className="bg-red-600 hover:bg-red-700 text-white shadow-md hover:shadow-lg transition-all duration-200"
                         >
@@ -339,30 +317,30 @@ export default function ProductosInventarioTable({ productos }: ProductosInventa
           })}
         </div>
 
-        {/* Pie de tabla */}
         <div className="py-6 text-gray-600 bg-gray-50/50 text-center">
           <div className="flex items-center justify-center gap-2">
             <Package className="h-4 w-4" />
-            Catálogo de productos en inventario
+            Lista de todas las variantes de productos en inventario
           </div>
         </div>
       </div>
 
-      {/* Modal para Añadir Stock */}
+      {/* El modal para añadir stock ahora recibe una variante (ProductoConStock) */}
       {selectedProductForStock && (
         <Dialog open={isAddStockModalOpen} onOpenChange={setIsAddStockModalOpen}>
           <DialogContent className="sm:max-w-lg">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-xl">
                 <Layers className="h-5 w-5 text-green-600" />
-                Añadir Stock: {selectedProductForStock.nombre}
+                Añadir Stock a Variante: {selectedProductForStock.nombre}
               </DialogTitle>
               <DialogDescription className="pt-2">
                 {selectedProductForStock.requiere_lote
-                  ? "Este producto se gestiona por lotes. Vas a registrar una nueva entrada de lote."
-                  : "Este producto no se gestiona por lotes. Se añadirá stock al inventario general del producto."}
+                  ? "Esta variante se gestiona por lotes. Vas a registrar una nueva entrada de lote."
+                  : "Esta variante no se gestiona por lotes. Se añadirá stock directamente a la variante."}
               </DialogDescription>
             </DialogHeader>
+            {/* El componente AñadirStockForm necesitará ser adaptado para recibir el ID de la variante */}
             <AñadirStockForm
               producto={selectedProductForStock}
               onFormSubmit={() => handleAddStockModalClose(true)}

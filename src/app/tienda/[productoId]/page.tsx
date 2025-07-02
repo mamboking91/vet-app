@@ -1,11 +1,8 @@
 import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { notFound } from 'next/navigation';
-import type { ProductoCatalogo, ImagenProducto } from '@/app/dashboard/inventario/types';
-import { Badge } from '@/components/ui/badge';
-import ProductGallery from '@/components/ui/ProductGallery';
-import AddToCartButton from './AddToCartButton';
-import { PackageCheck, PackageX } from 'lucide-react';
+import type { ProductoCatalogo, ProductoConStock } from '@/app/dashboard/inventario/types';
+import ProductDisplay from './ProductDisplay'; // Crearemos este componente en el mismo archivo
 
 interface ProductoDetallePageProps {
   params: {
@@ -13,99 +10,51 @@ interface ProductoDetallePageProps {
   };
 }
 
-// Este tipo combina el tipo base del producto con los campos que realmente vienen de la vista
-type ProductoConStockOriginal = Omit<ProductoCatalogo, 'stock_disponible'> & {
-    stock_total_actual: number | null; // El nombre original de la columna de stock
-    categorias_tienda: { nombre: string }[] | null;
-    descripcion_publica: string | null;
-};
+export const dynamic = 'force-dynamic';
 
-
+// --- Componente del Servidor: Obtiene los datos ---
 export default async function ProductoDetallePage({ params }: ProductoDetallePageProps) {
   const cookieStore = cookies();
   const supabase = createServerComponentClient({ cookies: () => cookieStore });
   const { productoId } = params;
 
-  // Consultamos la vista que ya funcionaba, la que tiene 'stock_total_actual'
-  const { data: product, error: productError } = await supabase
-    .from('productos_inventario_con_stock') 
+  // 1. Obtener el producto principal del catálogo
+  const { data: producto, error: productoError } = await supabase
+    .from('productos_catalogo')
     .select('*')
     .eq('id', productoId)
     .eq('en_tienda', true)
-    .single<ProductoConStockOriginal>();
-
-  const { data: clinicData } = await supabase.from('datos_clinica').select('logo_url').single();
-
-  if (productError || !product) {
+    .single<ProductoCatalogo>();
+  
+  if (productoError || !producto) {
     notFound();
   }
-  
-  const logoFallbackUrl = clinicData?.logo_url || "https://placehold.co/600x600/e2e8f0/e2e8f0.png?text=Gomera+Mascotas";
-  
-  const categorias = (Array.isArray(product.categorias_tienda) ? product.categorias_tienda : []);
-  const imagenes = (Array.isArray(product.imagenes) ? product.imagenes : []);
-  
-  // Leemos el stock desde el nombre de columna original
-  const stockDisponible = product.stock_total_actual ?? 0;
 
-  let precioFinalDisplay = 'Precio a consultar';
-  if (product.precio_venta !== null && product.porcentaje_impuesto !== null) {
-    const precioFinal = Number(product.precio_venta) * (1 + Number(product.porcentaje_impuesto) / 100);
-    precioFinalDisplay = `${precioFinal.toFixed(2)} €`;
+  // 2. Obtener todas sus variantes con stock desde la vista
+  const { data: variantes, error: variantesError } = await supabase
+    .from('productos_inventario_con_stock')
+    .select('*')
+    .eq('producto_padre_id', productoId)
+    .gt('stock_total_actual', 0); // Solo variantes con stock
+
+  if (variantesError) {
+    console.error("Error fetching product variants:", variantesError);
+    // Puedes optar por mostrar un error o simplemente no mostrar variantes
+  }
+  
+  if (!variantes || variantes.length === 0) {
+    // Si no hay variantes con stock, podrías mostrar un mensaje de "Agotado"
+    // o redirigir. Por ahora, mostraremos la página pero sin opciones de compra.
   }
 
-  // CORRECCIÓN: Creamos un objeto para el botón que SÍ CUMPLE con el tipo ProductoCatalogo
-  // Añadimos la propiedad 'stock_disponible' que el botón espera.
-  const productForButton: ProductoCatalogo = {
-      ...product,
-      stock_disponible: stockDisponible,
-  };
-  
+  const { data: clinicData } = await supabase.from('datos_clinica').select('logo_url').single();
+  const logoFallbackUrl = clinicData?.logo_url || "https://placehold.co/600x600/e2e8f0/e2e8f0.png?text=Gomera+Mascotas";
+
   return (
-    <div className="bg-white">
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-          <div>
-            <ProductGallery 
-              images={imagenes}
-              fallbackImageUrl={logoFallbackUrl}
-              productName={product.nombre}
-            />
-          </div>
-
-          <div className="flex flex-col justify-center">
-            {categorias.length > 0 && (
-              <div className="mb-2 flex flex-wrap gap-2">
-                {categorias.map((cat, index) => (<Badge key={index} variant="secondary">{cat.nombre}</Badge>))}
-              </div>
-            )}
-            <h1 className="text-3xl lg:text-4xl font-extrabold text-gray-900 tracking-tight">{product.nombre}</h1>
-            
-            <div className="mt-4 flex items-center justify-between">
-              <p className="text-3xl text-gray-900">{precioFinalDisplay}</p>
-              {stockDisponible > 0 ? (
-                <Badge variant="outline" className="text-green-600 border-green-300 bg-green-50">
-                  <PackageCheck className="h-4 w-4 mr-2" /> {stockDisponible} {stockDisponible === 1 ? 'unidad disponible' : 'unidades disponibles'}
-                </Badge>
-              ) : (
-                <Badge variant="destructive">
-                  <PackageX className="h-4 w-4 mr-2" /> Agotado
-                </Badge>
-              )}
-            </div>
-            
-            <div className="mt-6">
-              <h3 className="text-lg font-medium text-gray-800">Descripción</h3>
-              <div className="mt-2 prose prose-sm text-gray-600 max-w-none" dangerouslySetInnerHTML={{ __html: product.descripcion_publica?.replace(/\n/g, '<br />') || 'No hay descripción disponible.' }} />
-            </div>
-
-            <div className="mt-8">
-              {/* Le pasamos el objeto adaptado al botón */}
-              <AddToCartButton product={productForButton} />
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+    <ProductDisplay 
+      producto={producto} 
+      variantes={variantes as ProductoConStock[] || []} 
+      fallbackImageUrl={logoFallbackUrl}
+    />
   );
 }
