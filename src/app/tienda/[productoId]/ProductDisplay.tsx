@@ -9,7 +9,7 @@ import { PackageCheck, PackageX } from 'lucide-react';
 import type { ProductoCatalogo, ProductoConStock, ImagenProducto } from '@/app/dashboard/inventario/types';
 import { formatCurrency } from '@/lib/utils';
 import { cn } from '@/lib/utils';
-import { Button } from '@/components/ui/button'; // CORRECCIÓN: Importación añadida
+import { Button } from '@/components/ui/button'; 
 
 interface ProductDisplayProps {
   producto: ProductoCatalogo;
@@ -20,21 +20,26 @@ interface ProductDisplayProps {
 export default function ProductDisplay({ producto, variantes, fallbackImageUrl }: ProductDisplayProps) {
   const [selectedVariant, setSelectedVariant] = useState<ProductoConStock | null>(variantes?.[0] || null);
 
+  // CORRECCIÓN: Se ha mejorado la lógica para mostrar la imagen de la variante seleccionada
   const handleSelectVariant = (variant: ProductoConStock) => {
     setSelectedVariant(variant);
   };
 
   const allImages = useMemo(() => {
-    const principalImages = producto.imagenes || [];
-    // CORRECCIÓN: Filtramos las variantes que no tienen imagen para evitar `null` en la URL
-    const variantImages = variantes
-      .map(v => ({ url: v.imagen_principal, isPrimary: false, order: 100 }))
-      .filter((img): img is ImagenProducto => img.url !== null);
-    
-    // Evitar duplicados
-    const uniqueImages = Array.from(new Map([...principalImages, ...variantImages].map(item => [item.url, item])).values());
-    return uniqueImages.sort((a,b) => a.order - b.order);
-  }, [producto.imagenes, variantes]);
+    // La imagen de la variante seleccionada tiene prioridad
+    if (selectedVariant?.imagen_principal) {
+        // Se crea una lista de imágenes, poniendo la de la variante primero
+        const primaryVariantImage: ImagenProducto = { 
+            url: selectedVariant.imagen_principal, 
+            isPrimary: true, 
+            order: -1 // Orden prioritario
+        };
+        const otherImages = (producto.imagenes || []).filter(img => img.url !== selectedVariant.imagen_principal);
+        return [primaryVariantImage, ...otherImages].sort((a,b) => a.order - b.order);
+    }
+    // Si no hay variante seleccionada o no tiene imagen, se usa la lógica original
+    return (producto.imagenes || []).sort((a,b) => a.order - b.order);
+  }, [selectedVariant, producto.imagenes]);
 
   const precioFinalDisplay = selectedVariant?.precio_venta != null 
     ? formatCurrency(selectedVariant.precio_venta * (1 + selectedVariant.porcentaje_impuesto / 100)) 
@@ -95,7 +100,6 @@ export default function ProductDisplay({ producto, variantes, fallbackImageUrl }
             </div>
 
             <div className="mt-8">
-              {/* CORRECCIÓN: Ahora pasamos el tipo correcto (ProductoConStock | null) */}
               <AddToCartButton product={selectedVariant} />
             </div>
           </div>

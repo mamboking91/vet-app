@@ -18,9 +18,10 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Save, AlertTriangle, CheckCircle, Trash2, Euro } from 'lucide-react';
+import { Save, AlertTriangle, CheckCircle, Trash2, Euro, Image as ImageIcon } from 'lucide-react';
 import type { ProductoCatalogo, ProductoVariante } from '../../../../types';
 import { actualizarVariante, eliminarVariante } from '../../../../actions';
+import NextImage from 'next/image';
 
 interface EditarVarianteFormProps {
   productoPadre: ProductoCatalogo;
@@ -34,16 +35,15 @@ export default function EditarVarianteForm({ productoPadre, variante }: EditarVa
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
-  // Estado del formulario, inicializado con los datos de la variante
   const [sku, setSku] = useState(variante.sku || '');
   const [precioBase, setPrecioBase] = useState(variante.precio_venta?.toString() || '');
   const [precioFinal, setPrecioFinal] = useState('');
   const [lastInput, setLastInput] = useState<'base' | 'final'>('base');
-  const [stock, setStock] = useState(variante.stock_actual?.toString() || '0');
+  const [imagePreview, setImagePreview] = useState<string | null>(variante.imagen_url || null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
 
   const tax = productoPadre.porcentaje_impuesto;
 
-  // Lógica para el cálculo de precios
   useEffect(() => {
     if (lastInput === 'base') {
       const base = parseFloat(precioBase);
@@ -66,13 +66,24 @@ export default function EditarVarianteForm({ productoPadre, variante }: EditarVa
     }
   }, [precioFinal, tax, lastInput]);
 
-  // Inicializa los precios al cargar el componente
   useEffect(() => {
     const base = parseFloat(variante.precio_venta?.toString() || '');
     if (!isNaN(base) && !isNaN(tax)) {
       setPrecioFinal((base * (1 + tax / 100)).toFixed(2));
     }
   }, [variante.precio_venta, tax]);
+  
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setImageFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagePreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -80,10 +91,13 @@ export default function EditarVarianteForm({ productoPadre, variante }: EditarVa
     setSuccess(false);
 
     const formData = new FormData(event.currentTarget);
-    formData.set('precio_venta', precioBase); // Aseguramos que se envía el precio base correcto
+    formData.set('precio_venta', precioBase);
+    if (imageFile) {
+        formData.set('imagen', imageFile);
+    }
 
     startTransition(async () => {
-      const result = await actualizarVariante(variante.id, formData);
+      const result = await actualizarVariante(variante.id, productoPadre.id, formData);
       
       if (!result.success) {
         setError(result.error?.message || 'Ocurrió un error.');
@@ -130,7 +144,7 @@ export default function EditarVarianteForm({ productoPadre, variante }: EditarVa
         <CardHeader>
           <CardTitle>Detalles de la Variante</CardTitle>
           <CardDescription>
-            Modifica el SKU, precio y stock para esta variante específica. Los atributos no se pueden cambiar.
+            Modifica el SKU, precio e imagen para esta variante específica.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6 p-6">
@@ -145,9 +159,8 @@ export default function EditarVarianteForm({ productoPadre, variante }: EditarVa
               ))}
             </div>
           </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-2">
+          
+          <div className="space-y-2">
               <Label htmlFor="sku">SKU</Label>
               <Input
                 id="sku"
@@ -156,23 +169,6 @@ export default function EditarVarianteForm({ productoPadre, variante }: EditarVa
                 onChange={(e) => setSku(e.target.value)}
                 placeholder="SKU de la variante"
               />
-            </div>
-            {!productoPadre.requiere_lote && (
-              <div className="space-y-2">
-                <Label htmlFor="stock_actual">Stock Actual</Label>
-                <Input
-                  id="stock_actual"
-                  name="stock_actual"
-                  type="number"
-                  value={stock}
-                  onChange={(e) => setStock(e.target.value)}
-                  placeholder="0"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Se registrará un movimiento de ajuste si modificas este valor.
-                </p>
-              </div>
-            )}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-end">
@@ -180,7 +176,7 @@ export default function EditarVarianteForm({ productoPadre, variante }: EditarVa
                 <Label htmlFor="precio_base">Precio Base (€ sin IGIC)</Label>
                 <Input
                   id="precio_base"
-                  name="precio_venta" // El nombre debe coincidir con la columna de la BD
+                  name="precio_venta"
                   type="number"
                   value={precioBase}
                   onChange={(e) => { setPrecioBase(e.target.value); setLastInput('base'); }}
@@ -202,6 +198,28 @@ export default function EditarVarianteForm({ productoPadre, variante }: EditarVa
                 />
               </div>
           </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="imagen">Imagen de la Variante</Label>
+            <div className="flex items-center gap-4">
+                {imagePreview ? (
+                    <NextImage src={imagePreview} alt="Previsualización" width={80} height={80} className="rounded-md object-cover border" />
+                ) : (
+                    <div className="w-20 h-20 bg-slate-100 rounded-md flex items-center justify-center">
+                        <ImageIcon className="h-8 w-8 text-slate-400" />
+                    </div>
+                )}
+                <Input
+                    id="imagen"
+                    name="imagen"
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageChange}
+                    className="max-w-xs"
+                />
+            </div>
+          </div>
+
 
           {error && (
             <div className="flex items-start gap-3 text-red-600 bg-red-50 p-3 rounded-lg border border-red-200">

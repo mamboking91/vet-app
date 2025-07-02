@@ -6,7 +6,6 @@ import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import {
-    unidadesDeMedidaInventarioOpciones,
     tiposDeMovimientoInventarioOpciones,
     impuestoItemOpciones,
     type TipoMovimientoInventarioValue,
@@ -19,7 +18,8 @@ const tiposDeMovimientoValues = tiposDeMovimientoInventarioOpciones.map(t => t.v
 const impuestoItemValues = impuestoItemOpciones.map(opt => opt.value) as [string, ...string[]];
 
 const VariantFormSchema = z.array(z.object({
-  id: z.number(),
+  id: z.union([z.string(), z.number()]),
+  db_id: z.string().uuid().optional().nullable(),
   sku: z.string().optional(),
   precio_venta: z.string().transform(val => parseFloat(val) || 0),
   stock_inicial: z.string().transform(val => parseInt(val, 10) || 0),
@@ -47,9 +47,8 @@ const ProductoSchema = z.object({
 const UpdateProductoSchema = ProductoSchema.omit({ tipo: true });
 
 const UpdateVariantSchema = z.object({
+  precio_venta: z.coerce.number({invalid_type_error: "El precio debe ser un número."}).min(0, "El precio no puede ser negativo."),
   sku: z.string().optional(),
-  precio_venta: z.coerce.number().min(0).optional(),
-  stock_actual: z.coerce.number().int().min(0).optional(),
 });
 
 const AddStockSchema = z.object({
@@ -59,16 +58,9 @@ const AddStockSchema = z.object({
   fecha_caducidad: z.string().optional(),
 });
 
-const EntradaLoteSchema = z.object({
-  numero_lote: z.string().min(1, "El número de lote es requerido."),
-  stock_lote: z.coerce.number().int().positive("El stock de entrada debe ser un número positivo mayor que cero."),
-  fecha_entrada: z.string().nullable().transform(val => (val === '' || val === null) ? undefined : val).refine(val => val === undefined || (typeof val === 'string' && !isNaN(Date.parse(val))), { message: "Fecha de entrada inválida." }).transform(val => val ? new Date(val).toISOString().split('T')[0] : undefined).default(new Date().toISOString().split('T')[0]),
-  fecha_caducidad: z.string().nullable().transform(val => (val === '' || val === null) ? undefined : val).refine(val => val === undefined || (typeof val === 'string' && !isNaN(Date.parse(val))), { message: "Fecha de caducidad inválida."}).transform(val => val ? new Date(val).toISOString().split('T')[0] : undefined).optional(),
-});
-
 const MovimientoStockSchema = z.object({
   tipo_movimiento: z.enum(tiposDeMovimientoValues),
-  cantidad: z.coerce.number().int().refine(val => val !== 0, "La cantidad no puede ser cero."),
+  cantidad: z.coerce.number().int().positive("La cantidad debe ser un número positivo."),
   notas: z.string().optional().transform(val => val === '' ? undefined : val),
 });
 
@@ -88,16 +80,16 @@ export async function agregarProductoYVariantes(formData: FormData) {
 
     const rawFormData = Object.fromEntries(formData.entries());
     const validatedFields = ProductoSchema.safeParse(rawFormData);
-    
+
     if (!validatedFields.success) {
         return { success: false, error: { message: "Error de validación.", errors: validatedFields.error.flatten().fieldErrors } };
     }
-    
+
     const {
         nombre, tipo, descripcion_publica, requiere_lote, en_tienda, destacado, categorias_tienda,
         sku, precio_venta, porcentaje_impuesto, stock_no_lote_valor
     } = validatedFields.data;
-    
+
     const { data: productoCatalogo, error: catalogoError } = await supabase
         .from('productos_catalogo')
         .insert({
@@ -148,27 +140,17 @@ export async function agregarProductoYVariantes(formData: FormData) {
                     if (imageFile && imageFile.size > 0) {
                         const BUCKET_NAME = 'product-images';
                         const filePath = `${user.id}/${productoId}/${dbVariant.id}-${imageFile.name}`;
-                        
-                        const { error: uploadError } = await supabase.storage.from(BUCKET_NAME).upload(filePath, imageFile);
+
+                        const { error: uploadError } = await supabase.storage.from(BUCKET_NAME).upload(filePath, imageFile, { upsert: true });
                         if (uploadError) continue;
 
-                        const { data: publicUrlData } = await supabase.storage.from(BUCKET_NAME).getPublicUrl(filePath);
-                        
+                        const { data: publicUrlData } = supabase.storage.from(BUCKET_NAME).getPublicUrl(filePath);
+
                         await supabase
                             .from('producto_variantes')
                             .update({ imagen_url: publicUrlData.publicUrl })
                             .eq('id', dbVariant.id);
                     }
-                }
-            }
-
-            if (!requiere_lote && createdVariants) {
-                const movimientos = createdVariants.filter(v => v.stock_actual > 0).map(v => ({
-                    variante_id: v.id, producto_id: productoId, tipo_movimiento: 'Ajuste Positivo' as const,
-                    cantidad: v.stock_actual, notas: 'Stock inicial para variante de producto.'
-                }));
-                if (movimientos.length > 0) {
-                    await supabase.from('movimientos_inventario').insert(movimientos);
                 }
             }
         }
@@ -202,9 +184,13 @@ export async function actualizarProductoCatalogo(id: string, formData: FormData)
     const cookieStore = cookies();
     const supabase = createServerActionClient({ cookies: () => cookieStore });
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return { success: false, error: { message: "Usuario no autenticado." } };
-    if (!z.string().uuid().safeParse(id).success) return { success: false, error: { message: "ID de producto inválido." }};
-    
+    if (!user) {
+        return { success: false, error: { message: "Usuario no autenticado." } };
+    }
+    if (!z.string().uuid().safeParse(id).success) {
+        return { success: false, error: { message: "ID de producto inválido." } };
+    }
+
     const rawFormData = Object.fromEntries(formData.entries());
     const validatedFields = UpdateProductoSchema.safeParse(rawFormData);
     if (!validatedFields.success) {
@@ -219,7 +205,7 @@ export async function actualizarProductoCatalogo(id: string, formData: FormData)
         const filePath = `${user.id}/${id}/${Date.now()}-${file.name}`;
         const { error: uploadError } = await supabase.storage.from(BUCKET_NAME).upload(filePath, file);
         if (uploadError) {
-            console.error(`Error al subir nueva imagen ${file.name}:`, uploadError);
+            console.error(`Error al subir nueva imagen principal ${file.name}:`, uploadError);
             continue;
         }
         const { data: publicUrlData } = supabase.storage.from(BUCKET_NAME).getPublicUrl(filePath);
@@ -241,85 +227,215 @@ export async function actualizarProductoCatalogo(id: string, formData: FormData)
     }
 
     const { stock_no_lote_valor, existing_images: _, ...productCatalogDataToUpdate } = validatedFields.data;
-    const dataToUpdateDb: { [key: string]: any } = { 
-        ...productCatalogDataToUpdate, 
+    const dataToUpdateDb = {
+        ...productCatalogDataToUpdate,
         imagenes: finalImages.length > 0 ? finalImages : null,
-        updated_at: new Date().toISOString() 
+        updated_at: new Date().toISOString()
     };
-    
+
     const { error: dbError } = await supabase.from("productos_catalogo").update(dataToUpdateDb).eq("id", id);
     if (dbError) {
-        return { success: false, error: { message: `Error de base de datos al actualizar: ${dbError.message}` } };
+        return { success: false, error: { message: `Error de base de datos al actualizar producto: ${dbError.message}` } };
     }
-    
+
+    const variantsDataStr = formData.get('variants_data') as string;
+    if (variantsDataStr) {
+      const parsedVariants = VariantFormSchema.parse(JSON.parse(variantsDataStr));
+
+      for (const formVariant of parsedVariants) {
+          const imageFile = formData.get(`variant_image_${formVariant.id}`) as File | null;
+          let imageUrlToUpdate: string | undefined = undefined;
+
+          if (imageFile && imageFile.size > 0) {
+              const variantIdForPath = formVariant.db_id || `new-${Date.now()}`;
+              const filePath = `${user.id}/${id}/${variantIdForPath}-${imageFile.name}`;
+
+              const { error: uploadError } = await supabase.storage.from(BUCKET_NAME).upload(filePath, imageFile, { upsert: true });
+
+              if (uploadError) {
+                  console.error(`Error subiendo imagen para variante ${formVariant.id}:`, uploadError);
+              } else {
+                  imageUrlToUpdate = supabase.storage.from(BUCKET_NAME).getPublicUrl(filePath).data.publicUrl;
+              }
+          }
+
+          const variantDbData = {
+              sku: formVariant.sku || null,
+              precio_venta: formVariant.precio_venta,
+              atributos: formVariant.atributos,
+              updated_at: new Date().toISOString(),
+              ...(imageUrlToUpdate !== undefined && { imagen_url: imageUrlToUpdate }),
+          };
+
+          if (formVariant.db_id) {
+            const { error: variantUpdateError } = await supabase.from('producto_variantes').update(variantDbData).eq('id', formVariant.db_id);
+            if (variantUpdateError) console.error(`Error actualizando variante ${formVariant.db_id}:`, variantUpdateError);
+          } else {
+            const { error: variantInsertError } = await supabase.from('producto_variantes').insert({ ...variantDbData, producto_id: id });
+            if (variantInsertError) console.error(`Error insertando nueva variante:`, variantInsertError);
+          }
+      }
+    }
+
     revalidatePath("/dashboard/inventario");
     revalidatePath(`/dashboard/inventario/${id}`);
     revalidatePath(`/dashboard/inventario/${id}/editar`);
     return { success: true, message: "Producto actualizado correctamente." };
+
   } catch (e: any) {
-    return { success: false, error: { message: `Error inesperado: ${e instanceof Error ? e.message : String(e)}` } };
+    console.error("Error completo en actualizarProductoCatalogo:", e);
+    return { success: false, error: { message: `Error inesperado en el servidor: ${e.message}` } };
   }
 }
 
-export async function actualizarVariante(varianteId: string, formData: FormData) {
+export async function actualizarVariante(varianteId: string, productoId: string, formData: FormData) {
   const cookieStore = cookies();
   const supabase = createServerActionClient({ cookies: () => cookieStore });
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { success: false, error: { message: "Usuario no autenticado." } };
-
-  if (!z.string().uuid().safeParse(varianteId).success) {
-      return { success: false, error: { message: "ID de variante inválido." } };
+  if (!user) {
+    return { success: false, error: { message: "Usuario no autenticado." } };
+  }
+  if (!z.string().uuid().safeParse(varianteId).success || !z.string().uuid().safeParse(productoId).success) {
+    return { success: false, error: { message: "ID de producto o variante inválido." } };
   }
 
   const rawFormData = Object.fromEntries(formData.entries());
   const validatedFields = UpdateVariantSchema.safeParse(rawFormData);
+
   if (!validatedFields.success) {
-      return { success: false, error: { message: "Error de validación.", errors: validatedFields.error.flatten().fieldErrors } };
-  }
-  const { sku, precio_venta, stock_actual } = validatedFields.data;
-
-  const { data: currentVariant, error: fetchError } = await supabase
-      .from('producto_variantes')
-      .select('stock_actual, producto_id')
-      .eq('id', varianteId)
-      .single();
-
-  if (fetchError || !currentVariant) {
-      return { success: false, error: { message: "No se encontró la variante a actualizar." } };
+    return { success: false, error: { message: "Datos de formulario inválidos.", errors: validatedFields.error.flatten().fieldErrors } };
   }
 
-  const dataToUpdate: { sku?: string | null, precio_venta?: number, stock_actual?: number, updated_at: string } = {
-      updated_at: new Date().toISOString()
+  const { sku, precio_venta } = validatedFields.data;
+
+  const dataToUpdate: { sku?: string | null; precio_venta?: number; imagen_url?: string; updated_at: string; } = {
+    updated_at: new Date().toISOString(),
   };
+
   if (sku !== undefined) dataToUpdate.sku = sku || null;
   if (precio_venta !== undefined) dataToUpdate.precio_venta = precio_venta;
-  if (stock_actual !== undefined) dataToUpdate.stock_actual = stock_actual;
+
+  // Handle image upload
+  const imageFile = formData.get('imagen') as File | null;
+  if (imageFile && imageFile.size > 0) {
+    const BUCKET_NAME = 'product-images';
+    const filePath = `${user.id}/${productoId}/${varianteId}-${imageFile.name}`;
+    const { error: uploadError } = await supabase.storage
+      .from(BUCKET_NAME)
+      .upload(filePath, imageFile, { upsert: true });
+
+    if (uploadError) {
+      console.error(`Error subiendo imagen para variante ${varianteId}:`, uploadError);
+      return { success: false, error: { message: `Error al subir la imagen: ${uploadError.message}` } };
+    }
+
+    const { data: publicUrlData } = supabase.storage.from(BUCKET_NAME).getPublicUrl(filePath);
+    dataToUpdate.imagen_url = publicUrlData.publicUrl;
+  }
 
   const { error: updateError } = await supabase
-      .from('producto_variantes')
-      .update(dataToUpdate)
-      .eq('id', varianteId);
+    .from('producto_variantes')
+    .update(dataToUpdate)
+    .eq('id', varianteId);
 
   if (updateError) {
-      return { success: false, error: { message: `Error al actualizar la variante: ${updateError.message}` } };
+    return { success: false, error: { message: `Error al actualizar la variante: ${updateError.message}` } };
   }
 
-  if (stock_actual !== undefined && stock_actual !== currentVariant.stock_actual) {
-      const cantidadAjuste = stock_actual - currentVariant.stock_actual;
-      if (cantidadAjuste !== 0) {
-          const tipoMovimiento: TipoMovimientoInventarioValue = cantidadAjuste > 0 ? 'Ajuste Positivo' : 'Ajuste Negativo';
-          await supabase.from('movimientos_inventario').insert({
-              variante_id: varianteId,
-              producto_id: currentVariant.producto_id,
-              tipo_movimiento: tipoMovimiento,
-              cantidad: Math.abs(cantidadAjuste),
-              notas: `Ajuste manual al editar variante. Stock anterior: ${currentVariant.stock_actual}.`
-          });
-      }
-  }
+  revalidatePath(`/dashboard/inventario/${productoId}`);
+  revalidatePath(`/dashboard/inventario/${productoId}/variantes/${varianteId}/editar`);
+  return { success: true, message: "Variante actualizada correctamente." };
+}
 
-  revalidatePath(`/dashboard/inventario/${currentVariant.producto_id}`);
-  return { success: true };
+export async function registrarMovimientoStock(varianteId: string, loteId: string | null, formData: FormData) {
+    const cookieStore = cookies();
+    const supabase = createServerActionClient({ cookies: () => cookieStore });
+
+    if (!z.string().uuid().safeParse(varianteId).success) {
+        return { success: false, error: { message: "ID de variante inválido." } };
+    }
+    if (loteId && !z.string().uuid().safeParse(loteId).success) {
+        return { success: false, error: { message: "ID de lote inválido." } };
+    }
+
+    const rawFormData = Object.fromEntries(formData.entries());
+    const validatedFields = MovimientoStockSchema.safeParse(rawFormData);
+
+    if (!validatedFields.success) {
+        return { success: false, error: { message: "Datos de formulario inválidos.", errors: validatedFields.error.flatten().fieldErrors } };
+    }
+    const { tipo_movimiento, cantidad, notas } = validatedFields.data;
+
+    const { data: variante, error: varianteError } = await supabase
+        .from('producto_variantes')
+        .select('id, producto_id, stock_actual')
+        .eq('id', varianteId)
+        .single();
+
+    if (varianteError || !variante) {
+        return { success: false, error: { message: "No se encontró la variante." } };
+    }
+
+    const isPositiveMovement = ['Entrada Compra', 'Ajuste Positivo', 'Devolución Cliente'].includes(tipo_movimiento);
+    const cantidadAjuste = isPositiveMovement ? cantidad : -cantidad;
+
+    try {
+        if (loteId) {
+            const { data: lote, error: loteError } = await supabase
+                .from('lotes_producto')
+                .select('stock_lote')
+                .eq('id', loteId)
+                .single();
+
+            if (loteError || !lote) {
+                return { success: false, error: { message: "No se encontró el lote especificado." } };
+            }
+
+            const nuevoStockLote = lote.stock_lote + cantidadAjuste;
+            if (nuevoStockLote < 0) {
+                return { success: false, error: { message: `No hay suficiente stock en el lote. Stock actual: ${lote.stock_lote}.` } };
+            }
+
+            const { error: updateLoteError } = await supabase
+                .from('lotes_producto')
+                .update({ stock_lote: nuevoStockLote })
+                .eq('id', loteId);
+
+            if (updateLoteError) throw updateLoteError;
+
+        } else {
+             const nuevoStockVariante = (variante.stock_actual || 0) + cantidadAjuste;
+             if (nuevoStockVariante < 0) {
+                 return { success: false, error: { message: `No hay suficiente stock para el producto. Stock actual: ${variante.stock_actual}.` } };
+             }
+             const { error: updateVarianteError } = await supabase
+                .from('producto_variantes')
+                .update({ stock_actual: nuevoStockVariante })
+                .eq('id', varianteId);
+
+             if (updateVarianteError) throw updateVarianteError;
+        }
+
+        const { error: movimientoError } = await supabase.from('movimientos_inventario').insert({
+            variante_id: varianteId,
+            producto_id: variante.producto_id,
+            lote_id: loteId,
+            tipo_movimiento: tipo_movimiento,
+            cantidad: cantidad,
+            notas: notas,
+        });
+
+        if (movimientoError) {
+            return { success: false, error: { message: `El stock se actualizó, pero falló el registro del movimiento: ${movimientoError.message}` } };
+        }
+
+        revalidatePath(`/dashboard/inventario/${variante.producto_id}`);
+        revalidatePath('/dashboard/inventario');
+        return { success: true, message: "Movimiento de stock registrado correctamente." };
+
+    } catch (error: any) {
+        return { success: false, error: { message: `Error al procesar el movimiento de stock: ${error.message}` } };
+    }
 }
 
 export async function eliminarVariante(varianteId: string, productoId: string) {
@@ -337,7 +453,7 @@ export async function eliminarVariante(varianteId: string, productoId: string) {
     }
 
     if (count !== null && count <= 1) {
-      return { success: false, error: { message: "No se puede eliminar la última variante de un producto. Si ya no necesitas este producto, elimina el producto completo desde la página de detalle." } };
+      return { success: false, error: { message: "No se puede eliminar la última variante de un producto." } };
     }
 
     const { error: deleteError } = await supabase
@@ -347,7 +463,7 @@ export async function eliminarVariante(varianteId: string, productoId: string) {
 
     if (deleteError) {
       if (deleteError.code === '23503') {
-         return { success: false, error: { message: "No se puede eliminar: esta variante ya está en uso en pedidos, lotes u otras áreas del sistema." } };
+         return { success: false, error: { message: "No se puede eliminar: esta variante está en uso." } };
       }
       throw deleteError;
     }
@@ -366,21 +482,20 @@ export async function eliminarProductoCatalogo(id: string) {
     const cookieStore = cookies();
     const supabase = createServerActionClient({ cookies: () => cookieStore });
     const { count, error } = await supabase.from("productos_catalogo").delete({ count: 'exact' }).eq("id", id);
-    
+
     if (error) {
-      if (error.code === '23503') return { success: false, error: { message: "No se puede eliminar: el producto o sus variantes están en uso en otras partes del sistema (pedidos, etc.)."}};
+      if (error.code === '23503') return { success: false, error: { message: "No se puede eliminar: el producto está en uso."}};
       return { success: false, error: { message: `Error de base de datos: ${error.message}` }};
     }
     if (count === 0) return { success: false, error: { message: "El producto no se encontró." }};
-    
+
     revalidatePath("/dashboard/inventario");
-    return { success: true, message: "Producto y todas sus variantes eliminados." };
+    return { success: true, message: "Producto eliminado." };
   } catch (e: any) {
     return { success: false, error: { message: `Error inesperado: ${e.message}` } };
   }
 }
 
-// --- NUEVA ACCIÓN UNIFICADA PARA AÑADIR STOCK ---
 export async function agregarStock(varianteId: string, formData: FormData) {
   const cookieStore = cookies();
   const supabase = createServerActionClient({ cookies: () => cookieStore });
@@ -399,18 +514,16 @@ export async function agregarStock(varianteId: string, formData: FormData) {
     return { success: false, error: { message: "No se encontró la variante o su producto asociado." } };
   }
 
-  const requiereLote = variante.producto_padre.requiere_lote;
   const rawFormData = Object.fromEntries(formData.entries());
   const validatedFields = AddStockSchema.safeParse(rawFormData);
 
   if (!validatedFields.success) {
     return { success: false, error: { message: "Datos inválidos.", errors: validatedFields.error.flatten().fieldErrors } };
   }
-  
+
   const { cantidad, numero_lote, fecha_entrada, fecha_caducidad } = validatedFields.data;
 
   try {
-    if (requiereLote) {
       if (!numero_lote) {
         return { success: false, error: { message: "El número de lote es requerido.", errors: { numero_lote: ["Campo requerido"] } } };
       }
@@ -421,7 +534,7 @@ export async function agregarStock(varianteId: string, formData: FormData) {
         .eq('variante_id', varianteId)
         .eq('numero_lote', numero_lote)
         .maybeSingle();
-      
+
       let loteId: string;
       if (loteExistente) {
         loteId = loteExistente.id;
@@ -449,23 +562,6 @@ export async function agregarStock(varianteId: string, formData: FormData) {
         notas: `Entrada de stock para lote ${numero_lote}.`
       });
 
-    } else {
-      const { error: rpcError } = await supabase.rpc('incrementar_stock_variante', {
-        p_variante_id: varianteId,
-        p_cantidad: cantidad
-      });
-      if (rpcError) throw rpcError;
-
-      await supabase.from('movimientos_inventario').insert({
-        variante_id: varianteId,
-        producto_id: variante.producto_padre.id,
-        lote_id: null,
-        tipo_movimiento: 'Entrada Compra',
-        cantidad: cantidad,
-        notas: 'Entrada de stock para producto sin gestión de lotes.'
-      });
-    }
-
     revalidatePath(`/dashboard/inventario/${variante.producto_padre.id}`);
     revalidatePath('/dashboard/inventario');
     return { success: true };
@@ -473,20 +569,6 @@ export async function agregarStock(varianteId: string, formData: FormData) {
   } catch (error: any) {
     return { success: false, error: { message: `Error de base de datos: ${error.message}` } };
   }
-}
-
-/**
- * @deprecated Utilizar agregarStock en su lugar.
- */
-export async function registrarEntradaLote(varianteId: string, formData: FormData) {
-    return agregarStock(varianteId, formData);
-}
-
-/**
- * @deprecated Utilizar agregarStock en su lugar.
- */
-export async function registrarMovimientoStock(varianteId: string, loteId: string | null, formData: FormData) {
-    return { success: false, error: { message: "Esta función está obsoleta. Utilizar agregarStock." } };
 }
 
 export async function actualizarDatosLote(loteId: string, varianteId: string, formData: FormData) {
@@ -529,7 +611,7 @@ export async function actualizarDatosLote(loteId: string, varianteId: string, fo
                 await supabase.from('movimientos_inventario').insert({ lote_id: loteId, producto_id: (data as any).producto_variantes.producto_id, variante_id: varianteId, tipo_movimiento: tipoMovimientoAjuste, cantidad: Math.abs(cantidadAjuste), notas: `Ajuste manual al editar lote. Anterior: ${loteAnterior.stock_lote}.` });
             }
         }
-        revalidatePath(`/dashboard/inventario/${(data as any).producto_variantes.producto_id}`); 
+        revalidatePath(`/dashboard/inventario/${(data as any).producto_variantes.producto_id}`);
         return { success: true, data, message: "Lote actualizado." };
     } catch (e: any) {
         return { success: false, error: { message: `Error inesperado: ${e.message}` } };
@@ -543,7 +625,7 @@ export async function inactivarLoteProducto(loteId: string, varianteId: string) 
     const supabase = createServerActionClient({ cookies: () => cookieStore });
     const { data, error } = await supabase.from("lotes_producto").update({ esta_activo: false, updated_at: new Date().toISOString() }).eq("id", loteId).eq("variante_id", varianteId).select('id, producto_variantes(producto_id)').single();
     if (error || !data) return { success: false, error: { message: `Error al inactivar lote: ${error?.message || 'No encontrado.'}` } };
-    revalidatePath(`/dashboard/inventario/${(data as any).producto_variantes.producto_id}`); revalidatePath("/dashboard/inventario"); 
+    revalidatePath(`/dashboard/inventario/${(data as any).producto_variantes.producto_id}`); revalidatePath("/dashboard/inventario");
     return { success: true, message: "Lote inactivado." };
   } catch (e: any) {
     return { success: false, error: { message: `Error inesperado: ${e.message}` } };
@@ -557,7 +639,7 @@ export async function reactivarLoteProducto(loteId: string, varianteId: string) 
     const supabase = createServerActionClient({ cookies: () => cookieStore });
     const { data, error } = await supabase.from("lotes_producto").update({ esta_activo: true, updated_at: new Date().toISOString() }).eq("id", loteId).eq("variante_id", varianteId).select('id, producto_variantes(producto_id)').single();
     if (error || !data) return { success: false, error: { message: `Error al reactivar lote: ${error?.message || 'No encontrado.'}` } };
-    revalidatePath(`/dashboard/inventario/${(data as any).producto_variantes.producto_id}`); revalidatePath("/dashboard/inventario"); 
+    revalidatePath(`/dashboard/inventario/${(data as any).producto_variantes.producto_id}`); revalidatePath("/dashboard/inventario");
     return { success: true, message: "Lote reactivado." };
   } catch (e: any) {
     return { success: false, error: { message: `Error inesperado: ${e.message}` } };

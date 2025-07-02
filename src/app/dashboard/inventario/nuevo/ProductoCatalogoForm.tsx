@@ -55,15 +55,18 @@ type FieldErrors = {
 const DEFAULT_PRODUCT_TAX_RATE: ImpuestoItemValue = "7"
 
 type FormVariant = {
-  id: number;
+  id: number | string; // Usamos timestamp para nuevos, UUID string para existentes
+  db_id?: string; // ID real de la base de datos, solo para variantes existentes
   sku: string;
   precio_venta: string;
   precio_final: string;
   stock_inicial: string;
   lastPriceInput: 'base' | 'final';
   imagePreviewUrl?: string | null;
+  imageFile?: File | null; // Para manejar el archivo en el estado
   atributos: Record<string, string>;
 };
+
 
 export default function ProductoCatalogoForm({ initialData, productoId }: ProductoCatalogoFormProps) {
   const router = useRouter()
@@ -91,7 +94,7 @@ export default function ProductoCatalogoForm({ initialData, productoId }: Produc
   const [simpleStock, setSimpleStock] = useState("")
 
   const [attributeStr, setAttributeStr] = useState('Talla, Color');
-  const [variants, setVariants] = useState<FormVariant[]>([{ id: Date.now(), sku: '', precio_venta: '', precio_final: '', stock_inicial: '', lastPriceInput: 'base', atributos: {} }]);
+  const [variants, setVariants] = useState<FormVariant[]>([]);
 
   useEffect(() => {
     if (initialData) {
@@ -125,21 +128,23 @@ export default function ProductoCatalogoForm({ initialData, productoId }: Produc
       } else if (productType === 'variable' && initialData.variantes && initialData.variantes.length > 0) {
         const tax = parseFloat(taxValue as string);
         
-        const loadedVariants = initialData.variantes.map((v, index) => {
+        const loadedVariants = initialData.variantes.map(v => {
           const basePrice = v.precio_venta?.toString() || "";
           const base = parseFloat(basePrice);
           const finalPrice = (!isNaN(base) && !isNaN(tax))
             ? (base * (1 + tax / 100)).toFixed(2)
             : "";
           return {
-            id: v.id ? Number(v.id) : Date.now() + index,
+            id: v.id, // Usamos el ID real de la BD
+            db_id: v.id, // Guardamos el ID de la BD
             sku: v.sku || '',
             precio_venta: basePrice,
             precio_final: finalPrice,
             stock_inicial: (v.stock_actual || '').toString(),
             lastPriceInput: 'base' as const,
             atributos: v.atributos || {},
-            imagePreviewUrl: v.imagen_url || null
+            imagePreviewUrl: v.imagen_url || null,
+            imageFile: null
           };
         });
         setVariants(loadedVariants);
@@ -148,6 +153,8 @@ export default function ProductoCatalogoForm({ initialData, productoId }: Produc
           const firstVariantAttributes = Object.keys(loadedVariants[0].atributos);
           setAttributeStr(firstVariantAttributes.join(', '));
         }
+      } else {
+        setVariants([{ id: Date.now(), sku: '', precio_venta: '', precio_final: '', stock_inicial: '', lastPriceInput: 'base', atributos: {} }])
       }
     }
   }, [initialData]);
@@ -189,27 +196,31 @@ export default function ProductoCatalogoForm({ initialData, productoId }: Produc
   const attributeNames = attributeStr.split(',').map(s => s.trim()).filter(Boolean);
 
   const handleAddVariant = () => {
-    setVariants(prev => [...prev, { id: Date.now(), sku: '', precio_venta: '', precio_final: '', stock_inicial: '', lastPriceInput: 'base', atributos: {} }]);
+    setVariants(prev => [...prev, { id: Date.now(), sku: '', precio_venta: '', precio_final: '', stock_inicial: '', lastPriceInput: 'base', atributos: {}, imageFile: null }]);
   };
 
-  const handleRemoveVariant = (id: number) => {
+  const handleRemoveVariant = (id: number | string) => {
     setVariants(prev => prev.filter(v => v.id !== id));
   };
 
-  const handleVariantChange = (id: number, field: 'sku' | 'stock_inicial', value: string) => {
+  const handleVariantChange = (id: number | string, field: 'sku' | 'stock_inicial', value: string) => {
     setVariants(prev => prev.map(v => v.id === id ? { ...v, [field]: value } : v));
   };
   
-  const handleVariantImageChange = (id: number, file: File | null) => {
-    if (!file) {
-      setVariants(prev => prev.map(v => v.id === id ? { ...v, imagePreviewUrl: null } : v));
-      return;
-    }
-    const previewUrl = URL.createObjectURL(file);
-    setVariants(prev => prev.map(v => v.id === id ? { ...v, imagePreviewUrl: previewUrl } : v));
+  const handleVariantImageChange = (id: number | string, file: File | null) => {
+    setVariants(prev => prev.map(v => {
+        if (v.id === id) {
+            return {
+                ...v,
+                imageFile: file,
+                imagePreviewUrl: file ? URL.createObjectURL(file) : v.imagePreviewUrl
+            };
+        }
+        return v;
+    }));
   };
 
-  const handleVariantPriceChange = (id: number, field: 'precio_venta' | 'precio_final', value: string) => {
+  const handleVariantPriceChange = (id: number | string, field: 'precio_venta' | 'precio_final', value: string) => {
     const tax = parseFloat(porcentajeImpuestoStr as string);
     if (isNaN(tax)) return;
     setVariants(prev => prev.map(v => {
@@ -226,7 +237,7 @@ export default function ProductoCatalogoForm({ initialData, productoId }: Produc
     }));
   };
   
-  const handleAttributeChange = (id: number, attributeName: string, value: string) => {
+  const handleAttributeChange = (id: number | string, attributeName: string, value: string) => {
     setVariants(prev => prev.map(v => 
       v.id === id ? { ...v, atributos: { ...v.atributos, [attributeName]: value } } : v
     ));
@@ -245,11 +256,14 @@ export default function ProductoCatalogoForm({ initialData, productoId }: Produc
     }
     
     if (tipo === 'variable') {
-      formData.append('variants_data', JSON.stringify(variants));
-      const variantImageInputs = event.currentTarget.querySelectorAll<HTMLInputElement>('input[name^="variant_image_"]');
-      variantImageInputs.forEach(input => {
-        if (input.files && input.files[0]) {
-          formData.append(input.name, input.files[0]);
+      // Pasamos las variantes sin los archivos, ya que no se pueden serializar
+      const serializableVariants = variants.map(({ imageFile, ...rest }) => rest);
+      formData.append('variants_data', JSON.stringify(serializableVariants));
+      
+      // Adjuntamos los archivos de las variantes al FormData con una clave única
+      variants.forEach(variant => {
+        if (variant.imageFile) {
+          formData.append(`variant_image_${variant.id}`, variant.imageFile);
         }
       });
     }
