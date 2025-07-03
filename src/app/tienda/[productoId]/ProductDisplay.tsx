@@ -1,4 +1,3 @@
-// src/app/tienda/[productoId]/ProductDisplay.tsx
 "use client"
 
 import React, { useState, useMemo, useEffect } from 'react';
@@ -13,8 +12,8 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button'; 
 
 interface ProductDisplayProps {
-  producto: ProductoCatalogo; // Información del producto padre
-  variantes: ProductoConStock[]; // Array de variantes desde la vista
+  producto: ProductoCatalogo;
+  variantes: ProductoConStock[];
   fallbackImageUrl: string;
 }
 
@@ -22,53 +21,35 @@ export default function ProductDisplay({ producto, variantes, fallbackImageUrl }
   const [selectedVariant, setSelectedVariant] = useState<ProductoConStock | null>(variantes?.[0] || null);
   const [mainImageUrl, setMainImageUrl] = useState<string | null>(null);
 
-  // --- LÓGICA DE GALERÍA DE IMÁGENES ---
-  const allImages = useMemo(() => {
-    const imageSet = new Set<string>();
-    const combinedImages: ImagenProducto[] = [];
-    
-    // Primero, las imágenes del producto padre, si existen.
-    if (producto.imagenes) {
-        producto.imagenes.forEach(img => {
-            if (img.url && !imageSet.has(img.url)) {
-                combinedImages.push(img);
-                imageSet.add(img.url);
-            }
-        });
-    }
+  // --- INICIO DE LA CORRECCIÓN ---
+  // La galería de imágenes ahora se basa EXCLUSIVAMENTE en las imágenes del producto padre.
+  const galleryImages = useMemo(() => {
+    return producto.imagenes?.sort((a, b) => (a.order ?? 0) - (b.order ?? 0)) || [];
+  }, [producto.imagenes]);
 
-    // Luego, añadimos las imágenes de las variantes que no estén ya en la lista.
-    variantes.forEach(variant => {
-        if (variant.imagen_variante_url && !imageSet.has(variant.imagen_variante_url)) {
-            combinedImages.push({
-                url: variant.imagen_variante_url,
-                isPrimary: false,
-                order: combinedImages.length
-            });
-            imageSet.add(variant.imagen_variante_url);
-        }
-    });
-
-    return combinedImages.sort((a,b) => (a.order ?? 0) - (b.order ?? 0));
-  }, [producto.imagenes, variantes]);
-
-
-  // --- LÓGICA DE ACTUALIZACIÓN DE IMAGEN PRINCIPAL (LA CLAVE ESTÁ AQUÍ) ---
+  // useEffect para actualizar la imagen principal de forma inteligente
   useEffect(() => {
-    let newImageUrl = fallbackImageUrl; // Empezamos con la imagen por defecto
+    let newImageUrl = fallbackImageUrl;
 
-    // Prioridad 1: La imagen específica de la variante SELECCIONADA
+    // Prioridad 1: La imagen específica de la variante SELECCIONADA (si existe).
     if (selectedVariant?.imagen_variante_url) {
       newImageUrl = selectedVariant.imagen_variante_url;
     } 
-    // Prioridad 2: Si no hay, la imagen principal del producto (la marcada como "isPrimary")
-    else if (selectedVariant?.imagen_producto_principal) {
-      newImageUrl = selectedVariant.imagen_producto_principal;
+    // Prioridad 2: Si no, la imagen marcada como 'isPrimary' en el producto padre.
+    else {
+      const primaryImage = producto.imagenes?.find(img => img.isPrimary);
+      if (primaryImage?.url) {
+        newImageUrl = primaryImage.url;
+      }
+      // Prioridad 3: Si no hay primaria, la primera imagen de la galería.
+      else if (galleryImages.length > 0) {
+        newImageUrl = galleryImages[0].url;
+      }
     }
     
     setMainImageUrl(newImageUrl);
-  }, [selectedVariant, fallbackImageUrl]);
-
+  }, [selectedVariant, producto.imagenes, galleryImages, fallbackImageUrl]);
+  // --- FIN DE LA CORRECCIÓN ---
 
   const handleSelectVariant = (variant: ProductoConStock) => {
     setSelectedVariant(variant);
@@ -90,7 +71,7 @@ export default function ProductDisplay({ producto, variantes, fallbackImageUrl }
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
           <div>
             <ProductGallery 
-              images={allImages}
+              images={galleryImages} // Pasamos solo las imágenes de la galería
               fallbackImageUrl={fallbackImageUrl}
               productName={producto.nombre}
               mainImageUrl={mainImageUrl}
@@ -114,7 +95,6 @@ export default function ProductDisplay({ producto, variantes, fallbackImageUrl }
               )}
             </div>
             
-            {/* Selector de Variantes */}
             {variantes.length > 1 && (
               <div className="mt-6">
                 <h3 className="text-sm font-medium text-gray-900">Opciones</h3>

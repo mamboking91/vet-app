@@ -1,7 +1,5 @@
-// src/components/ui/ProductGallery.tsx
 "use client"
 
-import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
 import type { ImagenProducto } from '@/app/dashboard/inventario/types';
@@ -15,7 +13,6 @@ interface ProductGalleryProps {
 }
 
 export default function ProductGallery({ images, productName, fallbackImageUrl, mainImageUrl, onThumbnailClick }: ProductGalleryProps) {
-  const sortedImages = images.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   
   if (!images || images.length === 0) {
     return (
@@ -35,7 +32,7 @@ export default function ProductGallery({ images, productName, fallbackImageUrl, 
     <div className="flex flex-col-reverse md:flex-row gap-4">
       {/* Thumbnails */}
       <div className="flex md:flex-col gap-2 overflow-x-auto md:overflow-y-auto md:w-24">
-        {sortedImages.map((image) => (
+        {images.map((image) => (
           <div
             key={image.url}
             className={cn(
@@ -55,8 +52,6 @@ export default function ProductGallery({ images, productName, fallbackImageUrl, 
         ))}
       </div>
       {/* Main Image */}
-      {/* --- INICIO DE LA CORRECCIÓN --- */}
-      {/* Se elimina el fondo gris y el padding del contenedor principal */}
       <div className="flex-1 aspect-square relative">
         <Image
           src={mainImageUrl || fallbackImageUrl}
@@ -65,7 +60,6 @@ export default function ProductGallery({ images, productName, fallbackImageUrl, 
           className="object-contain rounded-lg"
         />
       </div>
-      {/* --- FIN DE LA CORRECCIÓN --- */}
     </div>
   );
 }
