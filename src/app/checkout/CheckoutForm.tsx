@@ -4,7 +4,6 @@ import { useState, useTransition, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Script from 'next/script';
 import { useCart } from '@/context/CartContext';
-// Importamos ambas acciones del servidor
 import { createSumupCheckout, createStripeCheckout } from './actions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,6 +15,8 @@ import { toast } from 'sonner';
 import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { cn } from '@/lib/utils';
+import { formatCurrency } from '@/lib/utils';
+import Image from 'next/image';
 
 interface CheckoutFormProps {
   userData?: Propietario | null;
@@ -26,8 +27,8 @@ declare global {
 }
 
 export default function CheckoutForm({ userData }: CheckoutFormProps) {
-  // Ahora también obtenemos 'discountAmount' del carrito
-  const { cart, total, montoDescuento, clearCart } = useCart();
+  // Obtenemos todos los datos del carrito, incluyendo el subtotal y descuento
+  const { cart, total, subtotal, montoDescuento, clearCart } = useCart();
   const router = useRouter();
   const [isProcessing, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -48,7 +49,6 @@ export default function CheckoutForm({ userData }: CheckoutFormProps) {
 
     startTransition(async () => {
       if (paymentMethod === 'stripe') {
-        // Llamamos a la acción de Stripe con el descuento
         const result = await createStripeCheckout(cart, montoDescuento, formData);
         if (result.success && result.checkoutUrl) {
           router.push(result.checkoutUrl);
@@ -57,7 +57,6 @@ export default function CheckoutForm({ userData }: CheckoutFormProps) {
           setIsSubmitting(false);
         }
       } else { // SumUp
-        // Llamamos a la acción de SumUp con el descuento
         const result = await createSumupCheckout(cart, montoDescuento, formData);
         if (!result.success || !result.checkoutId) {
           setError(result.error || "No se pudo iniciar el proceso de pago con SumUp.");
@@ -133,10 +132,46 @@ export default function CheckoutForm({ userData }: CheckoutFormProps) {
             <Card className="sticky top-24">
               <CardHeader><CardTitle>2. Resumen y Pago</CardTitle></CardHeader>
               <CardContent>
-                 <div className="border-t mt-4 pt-4 space-y-2">
-                  <div className="flex justify-between font-bold text-lg"><p>Total a Pagar</p><p>{total.toFixed(2)} €</p></div>
+                {/* --- INICIO DE LA CORRECCIÓN --- */}
+                <div className="space-y-3 mb-4 border-b pb-4">
+                    {cart.map(item => (
+                        <div key={item.id} className="flex items-center justify-between text-sm">
+                            <div className="flex items-center gap-3">
+                                <Image 
+                                    src={item.imagen_producto_principal || '/placeholder.svg'}
+                                    alt={item.nombre}
+                                    width={40}
+                                    height={40}
+                                    className="rounded-md border object-cover"
+                                />
+                                <div>
+                                    <p className="font-medium text-gray-800">{item.nombre}</p>
+                                    <p className="text-muted-foreground">Cantidad: {item.quantity}</p>
+                                </div>
+                            </div>
+                            <p className="text-gray-900">{formatCurrency(item.precio_venta! * (1 + item.porcentaje_impuesto / 100) * item.quantity)}</p>
+                        </div>
+                    ))}
                 </div>
-
+                
+                <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Subtotal</span>
+                        <span>{formatCurrency(subtotal)}</span>
+                    </div>
+                    {montoDescuento > 0 && (
+                        <div className="flex justify-between text-sm text-green-600">
+                            <span className="text-muted-foreground">Descuento</span>
+                            <span>-{formatCurrency(montoDescuento)}</span>
+                        </div>
+                    )}
+                    <div className="flex justify-between font-bold text-lg border-t pt-2">
+                        <p>Total a Pagar</p>
+                        <p>{formatCurrency(total)}</p>
+                    </div>
+                </div>
+                {/* --- FIN DE LA CORRECCIÓN --- */}
+                
                 <RadioGroup value={paymentMethod} onValueChange={(value) => setPaymentMethod(value as 'stripe' | 'sumup')} className="my-6 space-y-2">
                     <Label className={cn("flex items-center gap-3 border rounded-lg p-4 cursor-pointer transition-all", paymentMethod === 'stripe' && 'bg-blue-50 border-blue-500 ring-2 ring-blue-500')}>
                         <RadioGroupItem value="stripe" id="stripe"/>

@@ -39,12 +39,20 @@ async function prepareCheckoutData(cartItems: CartItem[], formData: FormData) {
     }
 
     const productIds = cartItems.map(item => item.id);
+    
+    // --- INICIO DE LA CORRECCIÓN ---
+    // Cambiamos la consulta de la tabla 'productos_inventario' a la vista 'productos_inventario_con_stock'
     const { data: productsData, error: productsError } = await supabase
-      .from('productos_inventario')
+      .from('productos_inventario_con_stock') // <-- VISTA CORRECTA
       .select('id, nombre, precio_venta, porcentaje_impuesto, imagenes')
       .in('id', productIds);
+    // --- FIN DE LA CORRECCIÓN ---
 
-    if (productsError) throw new Error("No se pudieron obtener los detalles de los productos.");
+    if (productsError) {
+        // Este es el error que estabas viendo. Ahora no debería ocurrir.
+        console.error("Error al consultar la vista de productos:", productsError);
+        throw new Error("No se pudieron obtener los detalles de los productos.");
+    }
 
     const itemsConPrecio = cartItems.map(cartItem => {
       const productInfo = productsData?.find(p => p.id === cartItem.id);
@@ -97,8 +105,6 @@ export async function createStripeCheckout(cartItems: CartItem[], discountAmount
       line_items,
       mode: 'payment',
       discounts: coupon ? [{ coupon: coupon.id }] : [],
-      // --- CORRECCIÓN ---
-      // Se cambia el nombre del parámetro en la URL para mayor claridad.
       success_url: `${process.env.NEXT_PUBLIC_SITE_URL}/pedido/confirmacion?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${process.env.NEXT_PUBLIC_SITE_URL}/carrito`,
       metadata: {
@@ -122,7 +128,6 @@ export async function createStripeCheckout(cartItems: CartItem[], discountAmount
   }
 }
 
-// El resto del archivo no necesita cambios
 export async function createSumupCheckout(cartItems: CartItem[], discountAmount: number, formData: FormData) {
   try {
     const { validatedAddress, detailedItems } = await prepareCheckoutData(cartItems, formData);
