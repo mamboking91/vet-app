@@ -1,7 +1,6 @@
 // src/app/pedido/confirmacion/page.tsx
 
 import { createClient } from '@supabase/supabase-js';
-import { cookies } from 'next/headers';
 import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -10,23 +9,17 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { CheckCircle, Home } from 'lucide-react';
 
 // --- TIPOS DE DATOS ---
-type ImagenProducto = {
-  url: string;
-  isPrimary: boolean;
-  order: number;
-};
-
 type DetalleProducto = {
   nombre: string;
   imagen_producto_principal: string | null;
-  porcentaje_impuesto: number | null;
-  precio_venta: number | null;
 };
 
 type ItemPedido = {
   cantidad: number;
   precio_unitario: number;
   producto_id: string;
+  nombre: string;
+  porcentaje_impuesto: number;
   productos_inventario?: DetalleProducto;
 };
 
@@ -37,14 +30,16 @@ type PedidoCompleto = {
   email_cliente: string;
   direccion_envio: {
     nombre_completo?: string;
-    nombre?: string;
-    apellidos?: string;
     direccion: string;
     localidad: string;
     provincia: string;
     codigo_postal: string;
   };
   items_pedido: ItemPedido[];
+  factura?: {
+    subtotal: number;
+    monto_impuesto: number;
+  } | null;
 };
 
 // --- FUNCIÓN DE UTILIDAD ---
@@ -53,58 +48,62 @@ const formatCurrency = (amount: number | null | undefined): string => {
   return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(amount);
 };
 
-// --- LÓGICA DE REINTENTO (CORREGIDA) ---
-async function findOrderWithRetry(sessionId: string, retries = 5, delay = 1500) {
+// --- LÓGICA DE REINTENTO ---
+async function findOrderWithRetry(sessionId: string, retries = 5, delay = 1500): Promise<{ data: PedidoCompleto | null; error: { message: string } | null }> {
   const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
   for (let i = 0; i < retries; i++) {
-    console.log(`[findOrderWithRetry] Intento ${i + 1} para la sesión: ${sessionId}`);
-    
     const { data: orderData, error: orderError } = await supabaseAdmin
       .from('pedidos')
       .select(`
-        id, created_at, total, email_cliente, direccion_envio,
-        items_pedido ( producto_id, cantidad, precio_unitario )
+        *,
+        factura:factura_id (
+          subtotal,
+          monto_impuesto,
+          items_factura ( * )
+        )
       `)
       .eq('checkout_reference', sessionId)
       .single();
 
-    if (orderError && orderError.code !== 'PGRST116') {
-      console.error(`[findOrderWithRetry Intento ${i + 1}] Error al obtener el pedido:`, JSON.stringify(orderError, null, 2));
-      if (i < retries - 1) await new Promise(resolve => setTimeout(resolve, delay));
-      continue;
-    }
+    if (orderData) {
+      const factura = Array.isArray(orderData.factura) ? orderData.factura[0] : orderData.factura;
+      const itemsFactura = factura?.items_factura as any[] || [];
+      const productIds = itemsFactura.map(item => item.producto_inventario_id).filter(Boolean);
 
-    if (orderData && orderData.items_pedido) {
-      console.log(`[findOrderWithRetry] Pedido encontrado. Obteniendo detalles de productos...`);
-      
-      const productIds = orderData.items_pedido.map((item: ItemPedido) => item.producto_id);
-      
+      let productsMap = new Map();
       if (productIds.length > 0) {
-        const { data: productsData, error: productsError } = await supabaseAdmin
+        const { data: productsData } = await supabaseAdmin
           .from('productos_inventario_con_stock')
-          .select('id, nombre, imagen_producto_principal, porcentaje_impuesto, precio_venta')
+          .select('id, nombre, imagen_producto_principal')
           .in('id', productIds);
-
-        if (productsError) {
-          console.error(`[findOrderWithRetry] Error al obtener detalles de productos desde la vista:`, JSON.stringify(productsError, null, 2));
-          if (i < retries - 1) await new Promise(resolve => setTimeout(resolve, delay));
-          continue;
-        }
-
-        const productsMap = new Map(productsData.map((p: any) => [p.id, p]));
-        orderData.items_pedido.forEach((item: ItemPedido) => {
-          item.productos_inventario = productsMap.get(item.producto_id);
-        });
+        productsMap = new Map(productsData?.map((p: any) => [p.id, p]));
       }
       
-      console.log("[findOrderWithRetry] Detalles de productos unidos con éxito.");
-      return { data: orderData as PedidoCompleto, error: null };
-    }
+      const itemsPedidoFinal = itemsFactura.map((item: any) => ({
+        cantidad: item.cantidad,
+        precio_unitario: item.precio_unitario,
+        producto_id: item.producto_inventario_id,
+        nombre: item.descripcion,
+        porcentaje_impuesto: item.porcentaje_impuesto_item,
+        productos_inventario: productsMap.get(item.producto_inventario_id)
+      }));
 
+      const finalOrderData = {
+        ...orderData,
+        items_pedido: itemsPedidoFinal,
+        factura: {
+          subtotal: factura?.subtotal || 0,
+          monto_impuesto: factura?.monto_impuesto || 0,
+        }
+      };
+      
+      return { data: finalOrderData as PedidoCompleto, error: null };
+    }
+    
     if (i < retries - 1) {
       await new Promise(resolve => setTimeout(resolve, delay));
     }
@@ -114,35 +113,19 @@ async function findOrderWithRetry(sessionId: string, retries = 5, delay = 1500) 
 
 // --- COMPONENTE DE PÁGINA ---
 export default async function ConfirmationPage({ searchParams }: { searchParams: { session_id?: string } }) {
-  const { session_id } = searchParams;
-
-  if (!session_id) {
+  if (!searchParams.session_id) {
     redirect('/');
   }
 
-  const { data: order, error } = await findOrderWithRetry(session_id);
+  const { data: order, error } = await findOrderWithRetry(searchParams.session_id);
 
   if (error || !order) {
     console.error("Fallo al obtener el pedido después de los reintentos:", error?.message);
     notFound();
   }
 
-  let subtotal = 0;
-  let totalImpuestos = 0;
-
-  order.items_pedido.forEach(item => {
-    const precioBase = item.precio_unitario || 0;
-    const impuestoPorcentaje = item.productos_inventario?.porcentaje_impuesto ?? 0;
-    
-    const subtotalItem = item.cantidad * precioBase;
-    const impuestoItem = subtotalItem * (impuestoPorcentaje / 100);
-
-    subtotal += subtotalItem;
-    totalImpuestos += impuestoItem;
-  });
-
   const direccion = order.direccion_envio;
-  const nombreCompleto = direccion.nombre_completo || `${direccion.nombre || ''} ${direccion.apellidos || ''}`.trim();
+  const nombreCompleto = direccion.nombre_completo || 'Cliente';
 
   return (
     <div className="bg-gray-50 min-h-screen py-12 px-4 sm:px-6 lg:px-8">
@@ -159,25 +142,15 @@ export default async function ConfirmationPage({ searchParams }: { searchParams:
           <CardContent>
             <div className="divide-y divide-gray-200">
               {order.items_pedido.map((item, index) => {
-                const producto = item.productos_inventario;
-                
-                if (!producto) {
-                  return (
-                    <div key={index} className="flex items-center justify-between py-4">
-                      <p className="text-sm text-red-600">Información de un producto no disponible.</p>
-                    </div>
-                  );
-                }
-                
-                const precioFinalItem = item.precio_unitario * (1 + (producto.porcentaje_impuesto ?? 0) / 100);
+                const precioFinalItem = (item.precio_unitario || 0) * (1 + ((item.porcentaje_impuesto ?? 0) / 100));
                 return (
                   <div key={index} className="flex items-center justify-between py-4">
                     <div className="flex items-center gap-4">
                       <div className="w-16 h-16 bg-gray-100 rounded-md flex-shrink-0">
-                        {producto.imagen_producto_principal && <Image src={producto.imagen_producto_principal} alt={producto.nombre} width={64} height={64} className="object-contain rounded-md"/>}
+                        {item.productos_inventario?.imagen_producto_principal && <Image src={item.productos_inventario.imagen_producto_principal} alt={item.nombre} width={64} height={64} className="object-contain rounded-md"/>}
                       </div>
                       <div>
-                        <p className="font-semibold text-gray-800">{producto.nombre}</p>
+                        <p className="font-semibold text-gray-800">{item.nombre}</p>
                         <p className="text-sm text-gray-500">{item.cantidad} x {formatCurrency(precioFinalItem)}</p>
                       </div>
                     </div>
@@ -190,15 +163,11 @@ export default async function ConfirmationPage({ searchParams }: { searchParams:
             <div className="border-t border-gray-200 mt-4 pt-4 space-y-2 text-sm">
                <div className="flex justify-between">
                 <span className="text-gray-600">Subtotal (Base Imponible):</span>
-                <span className="font-medium text-gray-900">{formatCurrency(subtotal)}</span>
+                <span className="font-medium text-gray-900">{formatCurrency(order.factura?.subtotal)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600">Impuestos (IGIC):</span>
-                <span className="font-medium text-gray-900">{formatCurrency(totalImpuestos)}</span>
-              </div>
-               <div className="flex justify-between">
-                <span className="text-gray-600">Envío:</span>
-                <span className="font-medium text-gray-900">Gratis</span>
+                <span className="font-medium text-gray-900">{formatCurrency(order.factura?.monto_impuesto)}</span>
               </div>
               <div className="flex justify-between font-bold text-base pt-2 border-t mt-2">
                 <span>Total Pagado:</span>
@@ -219,13 +188,13 @@ export default async function ConfirmationPage({ searchParams }: { searchParams:
                     <h3 className="font-semibold text-gray-800 mb-2">Información de contacto</h3>
                      <p className="text-sm text-gray-600">{order.email_cliente}</p>
                   </div>
-              </div>
-               <div className="mt-8 text-center">
-                  <Button asChild><Link href="/tienda"><Home className="mr-2 h-4 w-4"/>Seguir Comprando</Link></Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+            </div>
+            <div className="mt-8 text-center">
+              <Button asChild><Link href="/tienda"><Home className="mr-2 h-4 w-4"/>Seguir Comprando</Link></Button>
+            </div>
+          </CardContent>
+        </Card>
       </div>
-    );
+    </div>
+  );
 }

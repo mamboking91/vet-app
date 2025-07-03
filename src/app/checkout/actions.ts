@@ -40,16 +40,14 @@ async function prepareCheckoutData(cartItems: CartItem[], formData: FormData) {
 
     const productIds = cartItems.map(item => item.id);
     
-    // --- INICIO DE LA CORRECCIÓN ---
-    // Cambiamos la consulta de la tabla 'productos_inventario' a la vista 'productos_inventario_con_stock'
+    // --- CORRECCIÓN ---
+    // La consulta ahora es más robusta y selecciona explícitamente la imagen principal del producto.
     const { data: productsData, error: productsError } = await supabase
-      .from('productos_inventario_con_stock') // <-- VISTA CORRECTA
-      .select('id, nombre, precio_venta, porcentaje_impuesto, imagenes')
+      .from('productos_inventario_con_stock') // Usamos la vista que ya tienes
+      .select('id, nombre, precio_venta, porcentaje_impuesto, imagen_producto_principal') // <-- SELECCIÓN CORREGIDA
       .in('id', productIds);
-    // --- FIN DE LA CORRECCIÓN ---
 
     if (productsError) {
-        // Este es el error que estabas viendo. Ahora no debería ocurrir.
         console.error("Error al consultar la vista de productos:", productsError);
         throw new Error("No se pudieron obtener los detalles de los productos.");
     }
@@ -68,7 +66,9 @@ async function prepareCheckoutData(cartItems: CartItem[], formData: FormData) {
         precio_venta: precioBase,
         porcentaje_impuesto: impuesto,
         precio_final_unitario: parseFloat(precioFinalUnitario.toFixed(2)),
-        imagenes: productInfo.imagenes as ImagenProducto[] | null,
+        // --- CORRECCIÓN ---
+        // Se asegura de que la propiedad `imagenes` sea un array, incluso si está vacío.
+        imagenes: productInfo.imagen_producto_principal ? [{ url: productInfo.imagen_producto_principal, isPrimary: true, order: 0 }] : [],
       };
     });
 
@@ -85,6 +85,8 @@ export async function createStripeCheckout(cartItems: CartItem[], discountAmount
         currency: 'eur',
         product_data: {
           name: item.nombre,
+          // --- CORRECCIÓN ---
+          // Stripe espera un array de strings para las imágenes.
           images: item.imagenes?.map((img: ImagenProducto) => img.url) || [],
         },
         unit_amount: Math.round(item.precio_final_unitario * 100),
