@@ -246,31 +246,33 @@ export async function actualizarProductoCatalogo(id: string, formData: FormData)
         return { success: false, error: { message: `Error de base de datos al actualizar producto: ${dbError.message}` } };
     }
 
-    // --- NUEVA LÓGICA ---
+    // --- INICIO DE LA CORRECCIÓN ---
     // Después de actualizar el producto principal, buscamos la imagen primaria
-    // y la establecemos en la primera variante (o la única si es simple).
+    // y la establecemos en TODAS las variantes.
     const primaryImage = finalImages.find(img => img.isPrimary);
     const primaryImageUrl = primaryImage ? primaryImage.url : (finalImages[0]?.url || null);
 
     if (primaryImageUrl) {
-      // Obtenemos la primera variante para asignarle la imagen principal.
-      // Esta es una simplificación; en un caso real podrías querer una lógica más compleja.
-      const { data: firstVariant } = await supabase
+      // Obtenemos TODAS las variantes para este producto.
+      const { data: allVariants, error: variantsError } = await supabase
         .from('producto_variantes')
         .select('id')
-        .eq('producto_id', id)
-        .order('created_at', { ascending: true })
-        .limit(1)
-        .single();
+        .eq('producto_id', id);
+
+      if (variantsError) {
+        console.error(`Error al obtener variantes para actualizar imagen principal: ${variantsError.message}`);
+      }
       
-      if (firstVariant) {
+      // Si se encontraron variantes, actualizamos la imagen principal en todas ellas.
+      if (allVariants && allVariants.length > 0) {
+        const variantIds = allVariants.map(v => v.id);
         await supabase
           .from('producto_variantes')
           .update({ imagen_principal: primaryImageUrl })
-          .eq('id', firstVariant.id);
+          .in('id', variantIds);
       }
     }
-    // --- FIN DE LA NUEVA LÓGICA ---
+    // --- FIN DE LA CORRECCIÓN ---
 
     const variantsDataStr = formData.get('variants_data') as string;
     if (variantsDataStr) {

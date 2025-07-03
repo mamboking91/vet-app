@@ -19,60 +19,62 @@ interface ProductDisplayProps {
 
 export default function ProductDisplay({ producto, variantes, fallbackImageUrl }: ProductDisplayProps) {
   const [selectedVariant, setSelectedVariant] = useState<ProductoConStock | null>(variantes?.[0] || null);
-  // Añadimos un estado para la URL de la imagen principal
   const [mainImageUrl, setMainImageUrl] = useState<string | null>(null);
 
   const allImages = useMemo(() => {
-    // La lógica de las imágenes se mantiene, pero ya no se usará para la imagen principal directamente
     const imageSet = new Set<string>();
     const combinedImages: ImagenProducto[] = [];
-
-    // Añadir imagen de la variante si existe
-    if (selectedVariant?.imagen_principal) {
-        if (!imageSet.has(selectedVariant.imagen_principal)) {
-            combinedImages.push({
-                url: selectedVariant.imagen_principal, 
-                isPrimary: true, 
-                order: -1
-            });
-            imageSet.add(selectedVariant.imagen_principal);
-        }
-    }
     
-    // Añadir imágenes del producto padre
     if (producto.imagenes) {
         producto.imagenes.forEach(img => {
             if (!imageSet.has(img.url)) {
-                combinedImages.push({ ...img, isPrimary: selectedVariant ? img.url === selectedVariant.imagen_principal : img.isPrimary });
+                combinedImages.push(img);
                 imageSet.add(img.url);
             }
         });
     }
 
-    return combinedImages.sort((a,b) => a.order - b.order);
-  }, [selectedVariant, producto.imagenes]);
+    // *** CORRECCIÓN CRÍTICA AQUÍ ***
+    // Se itera sobre las variantes para añadir sus imágenes únicas a la galería, usando la propiedad correcta.
+    variantes.forEach(variant => {
+        // Se usa `imagen_principal` de la variante, que es el campo correcto de la vista.
+        if (variant.imagen_principal && !imageSet.has(variant.imagen_principal)) {
+            combinedImages.push({
+                url: variant.imagen_principal,
+                isPrimary: false,
+                order: combinedImages.length
+            });
+            imageSet.add(variant.imagen_principal);
+        }
+    });
+    // *** FIN DE LA CORRECCIÓN ***
 
-  // useEffect para actualizar la imagen principal cuando cambia la variante o las imágenes
+    return combinedImages.sort((a,b) => (a.order ?? 0) - (b.order ?? 0));
+  }, [producto.imagenes, variantes]);
+
+  // useEffect para actualizar la imagen principal
   useEffect(() => {
-    // Prioridad 1: Imagen principal de la variante seleccionada
+    const primaryProductImage = producto.imagenes?.find(img => img.isPrimary);
+    if (primaryProductImage) {
+        setMainImageUrl(primaryProductImage.url);
+        return;
+    }
+
     if (selectedVariant?.imagen_principal) {
         setMainImageUrl(selectedVariant.imagen_principal);
         return;
     }
-    // Prioridad 2: Imagen primaria de la lista combinada de imágenes
-    const primaryImage = allImages.find(img => img.isPrimary) || allImages[0];
-    if (primaryImage) {
-        setMainImageUrl(primaryImage.url);
-    } else {
-    // Prioridad 3: Fallback si no hay imágenes
-        setMainImageUrl(fallbackImageUrl);
+    
+    if (allImages.length > 0) {
+        setMainImageUrl(allImages[0].url);
+        return;
     }
-  }, [selectedVariant, allImages, fallbackImageUrl]);
 
+    setMainImageUrl(fallbackImageUrl);
+  }, [selectedVariant, producto.imagenes, allImages, fallbackImageUrl]);
 
   const handleSelectVariant = (variant: ProductoConStock) => {
     setSelectedVariant(variant);
-    // No es necesario actualizar mainImageUrl aquí, el useEffect se encargará.
   };
 
   const handleThumbnailClick = (url: string) => {
@@ -94,8 +96,8 @@ export default function ProductDisplay({ producto, variantes, fallbackImageUrl }
               images={allImages}
               fallbackImageUrl={fallbackImageUrl}
               productName={producto.nombre}
-              mainImageUrl={mainImageUrl} // Pasamos el estado de la imagen principal
-              onThumbnailClick={handleThumbnailClick} // Pasamos la función para manejar el clic
+              mainImageUrl={mainImageUrl}
+              onThumbnailClick={handleThumbnailClick}
             />
           </div>
 
