@@ -1,3 +1,4 @@
+// src/app/tienda/page.tsx
 import Link from 'next/link';
 import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
@@ -6,6 +7,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Search } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
+import type { ProductoConStock } from '@/app/dashboard/inventario/types';
 import FiltrosTienda from './FiltrosTienda';
 
 function ProductCard({ product }: { product: any }) {
@@ -16,16 +18,18 @@ function ProductCard({ product }: { product: any }) {
     <Link href={`/tienda/${product.producto_padre_id}`} className="group">
       <Card className="w-full overflow-hidden transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
         <CardContent className="p-0">
-          <div className="aspect-square overflow-hidden bg-gray-100 flex items-center justify-center">
-            {/* Usando la nueva columna que siempre tiene la imagen principal correcta */}
+          {/* --- INICIO DE LA CORRECCIÓN --- */}
+          {/* Se elimina el fondo gris y el padding del contenedor de la imagen */}
+          <div className="aspect-square overflow-hidden flex items-center justify-center">
             <Image
               src={product.imagen_producto_principal || '/placeholder.svg'}
               alt={product.nombre}
               width={600}
               height={600}
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+              className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
             />
           </div>
+          {/* --- FIN DE LA CORRECCIÓN --- */}
           <div className="p-4 border-t">
             <h3 className="text-md font-semibold text-gray-800 truncate" title={nombreProducto}>
               {nombreProducto}
@@ -57,7 +61,6 @@ export default async function TiendaPage({ searchParams }: TiendaPageProps) {
   const searchQuery = searchParams?.q;
   const categoryFilter = searchParams?.categoria;
 
-  // Usamos la vista `productos_inventario_con_stock` que ahora tiene la columna de imagen correcta.
   let query = supabase
     .from('productos_inventario_con_stock')
     .select('*') 
@@ -79,7 +82,6 @@ export default async function TiendaPage({ searchParams }: TiendaPageProps) {
     console.error("Error fetching store products:", productsError);
   }
 
-  // Lógica para mostrar una sola tarjeta de producto aunque tenga múltiples variantes
   const uniqueProducts = Array.from(
     new Map(allVariants?.map(variant => [variant.producto_padre_id, variant])).values()
   );

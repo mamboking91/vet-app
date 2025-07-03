@@ -61,7 +61,7 @@ export type ProductoCatalogo = {
   en_tienda: boolean;
   destacado: boolean;
   requiere_lote: boolean;
-  porcentaje_impuesto: number; // <-- CORRECCIÓN: Propiedad añadida
+  porcentaje_impuesto: number;
 };
 
 // Representa una fila de la nueva tabla `producto_variantes`
@@ -113,7 +113,11 @@ export type ProductoConStock = {
     requiere_lote: boolean;
     en_tienda: boolean;
     destacado: boolean;
-    imagen_principal: string | null;
+    // --- INICIO DE LA CORRECCIÓN ---
+    imagen_producto_principal: string | null; // Columna renombrada desde `imagen_principal`
+    imagen_variante_url: string | null;      // Nueva columna para la imagen específica de la variante
+    atributos?: Record<string, any> | null;  // Nueva columna para los atributos de la variante
+    // --- FIN DE LA CORRECCIÓN ---
     imagenes: ImagenProducto[] | null; // Imágenes del producto padre
     categorias_tienda: { nombre: string }[] | null;
     stock_total_actual: number;

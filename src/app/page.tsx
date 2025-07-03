@@ -10,10 +10,7 @@ import { cn } from '@/lib/utils';
 import { ArrowRight, ShoppingBag, HeartPulse, Stethoscope, Siren, Sparkles, LucideProps } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 
-// Mapa de iconos para el bloque de características
 const iconMap: { [key: string]: React.FC<LucideProps> } = { Stethoscope, HeartPulse, Siren, Sparkles };
-
-// --- Componentes para Renderizar cada Bloque ---
 
 function HeroBlock({ contenido }: { contenido: ContenidoHeroe }) {
   return (
@@ -62,7 +59,7 @@ async function FeaturedProductsBlock({ contenido }: { contenido: ContenidoProduc
 
   const { data: featuredProducts } = await supabase
     .from('productos_inventario_con_stock')
-    .select('producto_padre_id, nombre, precio_venta, porcentaje_impuesto, imagen_producto_principal') // Usando la columna correcta
+    .select('producto_padre_id, nombre, precio_venta, porcentaje_impuesto, imagen_producto_principal')
     .eq('en_tienda', true)
     .eq('destacado', true)
     .gt('stock_total_actual', 0)
@@ -124,6 +121,7 @@ function CtaBlock({ contenido }: { contenido: ContenidoCTA }) {
   );
 }
 
+// --- Componente ProductCard con la corrección aplicada ---
 function ProductCard({ product, fallbackImageUrl }: { product: any, fallbackImageUrl: string }) {
     const primaryImageUrl = product.imagen_producto_principal || fallbackImageUrl;
     
@@ -137,9 +135,18 @@ function ProductCard({ product, fallbackImageUrl }: { product: any, fallbackImag
       <Link href={`/tienda/${product.producto_padre_id}`} className="group">
         <Card className="w-full overflow-hidden transition-all duration-300 hover:shadow-xl hover:-translate-y-1 bg-white dark:bg-slate-800">
           <CardContent className="p-0">
-            <div className="aspect-square overflow-hidden bg-gray-100 flex items-center justify-center">
-              <ProductImage src={primaryImageUrl} alt={product.nombre} width={600} height={600} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"/>
+            {/* --- INICIO DE LA CORRECCIÓN --- */}
+            {/* Se elimina el fondo gris y el padding del contenedor de la imagen */}
+            <div className="aspect-square overflow-hidden flex items-center justify-center">
+              <ProductImage 
+                src={primaryImageUrl} 
+                alt={product.nombre} 
+                width={600} 
+                height={600} 
+                className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
+              />
             </div>
+            {/* --- FIN DE LA CORRECCIÓN --- */}
             <div className="p-4 border-t dark:border-slate-700">
               <h3 className="text-md font-semibold text-gray-800 dark:text-white truncate">{product.nombre.split(' - ')[0]}</h3>
               <p className="text-lg font-bold text-blue-600 dark:text-blue-400 mt-2">{precioFinalDisplay}</p>
@@ -150,7 +157,6 @@ function ProductCard({ product, fallbackImageUrl }: { product: any, fallbackImag
     );
 }
 
-// --- Página Principal que Renderiza los Bloques ---
 export default async function HomePage() {
   const supabase = createServerComponentClient({ cookies: () => cookies() });
   const { data: bloques, error } = await supabase.from('bloques_pagina').select('*').eq('pagina', 'inicio').order('orden', { ascending: true });

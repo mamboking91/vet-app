@@ -13,8 +13,8 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button'; 
 
 interface ProductDisplayProps {
-  producto: ProductoCatalogo;
-  variantes: ProductoConStock[];
+  producto: ProductoCatalogo; // Información del producto padre
+  variantes: ProductoConStock[]; // Array de variantes desde la vista
   fallbackImageUrl: string;
 }
 
@@ -22,8 +22,7 @@ export default function ProductDisplay({ producto, variantes, fallbackImageUrl }
   const [selectedVariant, setSelectedVariant] = useState<ProductoConStock | null>(variantes?.[0] || null);
   const [mainImageUrl, setMainImageUrl] = useState<string | null>(null);
 
-  // --- INICIO DE LA CORRECCIÓN ---
-  // Lógica de imágenes simplificada gracias a la vista SQL corregida.
+  // --- LÓGICA DE GALERÍA DE IMÁGENES ---
   const allImages = useMemo(() => {
     const imageSet = new Set<string>();
     const combinedImages: ImagenProducto[] = [];
@@ -40,45 +39,36 @@ export default function ProductDisplay({ producto, variantes, fallbackImageUrl }
 
     // Luego, añadimos las imágenes de las variantes que no estén ya en la lista.
     variantes.forEach(variant => {
-        // La vista nos da 'imagen_principal' para cada variante.
-        if (variant.imagen_principal && !imageSet.has(variant.imagen_principal)) {
+        if (variant.imagen_variante_url && !imageSet.has(variant.imagen_variante_url)) {
             combinedImages.push({
-                url: variant.imagen_principal,
-                isPrimary: false, // La primacía la decide el producto padre
+                url: variant.imagen_variante_url,
+                isPrimary: false,
                 order: combinedImages.length
             });
-            imageSet.add(variant.imagen_principal);
+            imageSet.add(variant.imagen_variante_url);
         }
     });
 
     return combinedImages.sort((a,b) => (a.order ?? 0) - (b.order ?? 0));
   }, [producto.imagenes, variantes]);
 
-  // useEffect para actualizar la imagen principal de forma más robusta
-  useEffect(() => {
-    // Prioridad 1: La imagen principal de la variante seleccionada (si la tiene)
-    if (selectedVariant?.imagen_principal) {
-        setMainImageUrl(selectedVariant.imagen_principal);
-        return;
-    }
-    
-    // Prioridad 2: La imagen marcada como 'isPrimary' en el producto padre
-    const primaryProductImage = producto.imagenes?.find(img => img.isPrimary);
-    if (primaryProductImage?.url) {
-        setMainImageUrl(primaryProductImage.url);
-        return;
-    }
-    
-    // Prioridad 3: La primera imagen de la galería combinada
-    if (allImages.length > 0) {
-        setMainImageUrl(allImages[0].url);
-        return;
-    }
 
-    // Fallback final
-    setMainImageUrl(fallbackImageUrl);
-  }, [selectedVariant, producto.imagenes, allImages, fallbackImageUrl]);
-  // --- FIN DE LA CORRECCIÓN ---
+  // --- LÓGICA DE ACTUALIZACIÓN DE IMAGEN PRINCIPAL (LA CLAVE ESTÁ AQUÍ) ---
+  useEffect(() => {
+    let newImageUrl = fallbackImageUrl; // Empezamos con la imagen por defecto
+
+    // Prioridad 1: La imagen específica de la variante SELECCIONADA
+    if (selectedVariant?.imagen_variante_url) {
+      newImageUrl = selectedVariant.imagen_variante_url;
+    } 
+    // Prioridad 2: Si no hay, la imagen principal del producto (la marcada como "isPrimary")
+    else if (selectedVariant?.imagen_producto_principal) {
+      newImageUrl = selectedVariant.imagen_producto_principal;
+    }
+    
+    setMainImageUrl(newImageUrl);
+  }, [selectedVariant, fallbackImageUrl]);
+
 
   const handleSelectVariant = (variant: ProductoConStock) => {
     setSelectedVariant(variant);
@@ -125,23 +115,25 @@ export default function ProductDisplay({ producto, variantes, fallbackImageUrl }
             </div>
             
             {/* Selector de Variantes */}
-            <div className="mt-6">
-              <h3 className="text-sm font-medium text-gray-900">Opciones</h3>
-              <div className="flex flex-wrap gap-2 mt-2">
-                {variantes.map(variant => (
-                  <Button
-                    key={variant.id}
-                    variant={selectedVariant?.id === variant.id ? 'default' : 'outline'}
-                    onClick={() => handleSelectVariant(variant)}
-                    className={cn("transition-all", {
-                      "ring-2 ring-blue-500": selectedVariant?.id === variant.id
-                    })}
-                  >
-                    {variant.nombre.split(' - ')[1] || 'Opción única'}
-                  </Button>
-                ))}
+            {variantes.length > 1 && (
+              <div className="mt-6">
+                <h3 className="text-sm font-medium text-gray-900">Opciones</h3>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {variantes.map(variant => (
+                    <Button
+                      key={variant.id}
+                      variant={selectedVariant?.id === variant.id ? 'default' : 'outline'}
+                      onClick={() => handleSelectVariant(variant)}
+                      className={cn("transition-all", {
+                        "ring-2 ring-blue-500": selectedVariant?.id === variant.id
+                      })}
+                    >
+                      {variant.nombre.split(' - ')[1] || 'Opción única'}
+                    </Button>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
             <div className="mt-6">
               <h3 className="text-lg font-medium text-gray-800">Descripción</h3>
