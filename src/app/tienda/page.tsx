@@ -6,14 +6,10 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Search } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
-import type { ProductoConStock } from '@/app/dashboard/inventario/types';
 import FiltrosTienda from './FiltrosTienda';
 
-function ProductCard({ product }: { product: ProductoConStock }) {
-  // El precio que se muestra es el de la primera variante disponible.
+function ProductCard({ product }: { product: any }) {
   const precioFinalDisplay = product.precio_venta != null ? formatCurrency(product.precio_venta * (1 + product.porcentaje_impuesto / 100)) : 'Consultar';
-
-  // El nombre del producto se limpia para no mostrar los atributos en la tarjeta.
   const nombreProducto = product.nombre.split(' - ')[0];
 
   return (
@@ -21,8 +17,9 @@ function ProductCard({ product }: { product: ProductoConStock }) {
       <Card className="w-full overflow-hidden transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
         <CardContent className="p-0">
           <div className="aspect-square overflow-hidden bg-gray-100 flex items-center justify-center">
+            {/* Usando la nueva columna que siempre tiene la imagen principal correcta */}
             <Image
-              src={product.imagen_principal || '/placeholder.svg'}
+              src={product.imagen_producto_principal || '/placeholder.svg'}
               alt={product.nombre}
               width={600}
               height={600}
@@ -60,10 +57,10 @@ export default async function TiendaPage({ searchParams }: TiendaPageProps) {
   const searchQuery = searchParams?.q;
   const categoryFilter = searchParams?.categoria;
 
-  // Usamos la vista `productos_inventario_con_stock` que ya tiene todo lo necesario
+  // Usamos la vista `productos_inventario_con_stock` que ahora tiene la columna de imagen correcta.
   let query = supabase
     .from('productos_inventario_con_stock')
-    .select('*') // Seleccionamos todo para tener acceso a producto_padre_id
+    .select('*') 
     .eq('en_tienda', true)
     .gt('stock_total_actual', 0)
     .order('nombre', { ascending: true });
@@ -80,14 +77,12 @@ export default async function TiendaPage({ searchParams }: TiendaPageProps) {
 
   if (productsError) {
     console.error("Error fetching store products:", productsError);
-    // Manejo de error
   }
 
-  // --- LÓGICA PARA MOSTRAR UN SOLO PRODUCTO AUNQUE TENGA MÚLTIPLES VARIANTES ---
+  // Lógica para mostrar una sola tarjeta de producto aunque tenga múltiples variantes
   const uniqueProducts = Array.from(
     new Map(allVariants?.map(variant => [variant.producto_padre_id, variant])).values()
-  ) as ProductoConStock[];
-  // --------------------------------------------------------------------------
+  );
 
   const { data: allProductsResult } = await supabase
     .from('productos_catalogo')
@@ -113,16 +108,16 @@ export default async function TiendaPage({ searchParams }: TiendaPageProps) {
       <FiltrosTienda categorias={uniqueCategories} />
 
       {uniqueProducts && uniqueProducts.length > 0 ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8 mt-10">
           {uniqueProducts.map(product => (
             <ProductCard 
-              key={product.id} // Usamos el id de la variante como key único para React
+              key={(product as any).id}
               product={product}
             />
           ))}
         </div>
       ) : (
-        <div className="text-center py-16 px-4 border-2 border-dashed border-gray-300 rounded-lg">
+        <div className="text-center py-16 px-4 border-2 border-dashed border-gray-300 rounded-lg mt-10">
           <Search className="mx-auto h-12 w-12 text-gray-400" />
           <h3 className="mt-4 text-lg font-medium text-gray-900">No se encontraron productos</h3>
           <p className="mt-2 text-sm text-gray-500">

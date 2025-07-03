@@ -1,3 +1,4 @@
+// src/app/tienda/[productoId]/ProductDisplay.tsx
 "use client"
 
 import React, { useState, useMemo, useEffect } from 'react';
@@ -21,57 +22,63 @@ export default function ProductDisplay({ producto, variantes, fallbackImageUrl }
   const [selectedVariant, setSelectedVariant] = useState<ProductoConStock | null>(variantes?.[0] || null);
   const [mainImageUrl, setMainImageUrl] = useState<string | null>(null);
 
+  // --- INICIO DE LA CORRECCIÓN ---
+  // Lógica de imágenes simplificada gracias a la vista SQL corregida.
   const allImages = useMemo(() => {
     const imageSet = new Set<string>();
     const combinedImages: ImagenProducto[] = [];
     
+    // Primero, las imágenes del producto padre, si existen.
     if (producto.imagenes) {
         producto.imagenes.forEach(img => {
-            if (!imageSet.has(img.url)) {
+            if (img.url && !imageSet.has(img.url)) {
                 combinedImages.push(img);
                 imageSet.add(img.url);
             }
         });
     }
 
-    // *** CORRECCIÓN CRÍTICA AQUÍ ***
-    // Se itera sobre las variantes para añadir sus imágenes únicas a la galería, usando la propiedad correcta.
+    // Luego, añadimos las imágenes de las variantes que no estén ya en la lista.
     variantes.forEach(variant => {
-        // Se usa `imagen_principal` de la variante, que es el campo correcto de la vista.
+        // La vista nos da 'imagen_principal' para cada variante.
         if (variant.imagen_principal && !imageSet.has(variant.imagen_principal)) {
             combinedImages.push({
                 url: variant.imagen_principal,
-                isPrimary: false,
+                isPrimary: false, // La primacía la decide el producto padre
                 order: combinedImages.length
             });
             imageSet.add(variant.imagen_principal);
         }
     });
-    // *** FIN DE LA CORRECCIÓN ***
 
     return combinedImages.sort((a,b) => (a.order ?? 0) - (b.order ?? 0));
   }, [producto.imagenes, variantes]);
 
-  // useEffect para actualizar la imagen principal
+  // useEffect para actualizar la imagen principal de forma más robusta
   useEffect(() => {
-    const primaryProductImage = producto.imagenes?.find(img => img.isPrimary);
-    if (primaryProductImage) {
-        setMainImageUrl(primaryProductImage.url);
-        return;
-    }
-
+    // Prioridad 1: La imagen principal de la variante seleccionada (si la tiene)
     if (selectedVariant?.imagen_principal) {
         setMainImageUrl(selectedVariant.imagen_principal);
         return;
     }
     
+    // Prioridad 2: La imagen marcada como 'isPrimary' en el producto padre
+    const primaryProductImage = producto.imagenes?.find(img => img.isPrimary);
+    if (primaryProductImage?.url) {
+        setMainImageUrl(primaryProductImage.url);
+        return;
+    }
+    
+    // Prioridad 3: La primera imagen de la galería combinada
     if (allImages.length > 0) {
         setMainImageUrl(allImages[0].url);
         return;
     }
 
+    // Fallback final
     setMainImageUrl(fallbackImageUrl);
   }, [selectedVariant, producto.imagenes, allImages, fallbackImageUrl]);
+  // --- FIN DE LA CORRECCIÓN ---
 
   const handleSelectVariant = (variant: ProductoConStock) => {
     setSelectedVariant(variant);

@@ -1,4 +1,3 @@
-// src/app/page.tsx
 import Link from 'next/link';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from '@/components/ui/card';
@@ -55,28 +54,24 @@ function FeaturesBlock({ contenido }: { contenido: ContenidoCaracteristicas }) {
   );
 }
 
-// --- CORRECCIÓN ---
-// Componente corregido para obtener los productos destacados
 async function FeaturedProductsBlock({ contenido }: { contenido: ContenidoProductosDestacados }) {
   const supabase = createServerComponentClient({ cookies: () => cookies() });
   
-  // Se obtiene la URL del logo para usarla como fallback
   const { data: clinicData } = await supabase.from('datos_clinica').select('logo_url').single();
   const logoFallbackUrl = clinicData?.logo_url || "https://placehold.co/600x600/e2e8f0/e2e8f0.png?text=Gomera+Mascotas";
 
-  // Se consulta la VISTA `productos_inventario_con_stock` que tiene toda la información
   const { data: featuredProducts } = await supabase
     .from('productos_inventario_con_stock')
-    .select('producto_padre_id, nombre, precio_venta, porcentaje_impuesto, imagen_principal')
+    .select('producto_padre_id, nombre, precio_venta, porcentaje_impuesto, imagen_producto_principal') // Usando la columna correcta
     .eq('en_tienda', true)
-    .eq('destacado', true) // Filtro por la columna 'destacado'
-    .limit(4);
+    .eq('destacado', true)
+    .gt('stock_total_actual', 0)
+    .limit(8);
 
   if (!featuredProducts || featuredProducts.length === 0) {
-    return null; // No renderizar nada si no hay productos destacados
+    return null;
   }
 
-  // Asegurar que no se repitan productos si varias de sus variantes son destacadas
   const uniqueProducts = Array.from(
     new Map(featuredProducts.map(item => [item.producto_padre_id, item])).values()
   );
@@ -86,7 +81,7 @@ async function FeaturedProductsBlock({ contenido }: { contenido: ContenidoProduc
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
         <h2 className="text-3xl font-bold text-center text-gray-800 dark:text-white mb-10">{contenido.titulo}</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
-          {uniqueProducts.map(product => (
+          {uniqueProducts.slice(0, 4).map(product => (
             <ProductCard key={product.producto_padre_id} product={product} fallbackImageUrl={logoFallbackUrl} />
           ))}
         </div>
@@ -130,7 +125,7 @@ function CtaBlock({ contenido }: { contenido: ContenidoCTA }) {
 }
 
 function ProductCard({ product, fallbackImageUrl }: { product: any, fallbackImageUrl: string }) {
-    const primaryImageUrl = product.imagen_principal || fallbackImageUrl;
+    const primaryImageUrl = product.imagen_producto_principal || fallbackImageUrl;
     
     let precioFinalDisplay = 'Consultar';
     if (product.precio_venta !== null && product.porcentaje_impuesto !== null) {

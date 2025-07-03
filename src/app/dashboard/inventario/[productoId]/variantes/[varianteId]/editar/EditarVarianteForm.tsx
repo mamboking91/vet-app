@@ -94,6 +94,8 @@ export default function EditarVarianteForm({ productoPadre, variante }: EditarVa
     formData.set('precio_venta', precioBase);
     if (imageFile) {
         formData.set('imagen', imageFile);
+        // Indica a la acción que esta imagen debe ser la principal para la variante
+        formData.set('set_como_principal', 'true');
     }
 
     startTransition(async () => {

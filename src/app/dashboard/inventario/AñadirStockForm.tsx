@@ -1,3 +1,4 @@
+// src/app/dashboard/inventario/AñadirStockForm.tsx
 "use client"
 
 import type React from "react"
@@ -52,7 +53,7 @@ export default function AñadirStockForm({ producto, onFormSubmit, onCancel }: A
     setFieldErrors(null)
 
     const formData = new FormData(event.currentTarget)
-    // CORRECCIÓN: Añadimos las fechas manualmente al FormData ya que DatePicker no tiene 'name'
+    
     if (fechaEntrada) {
         formData.append('fecha_entrada', format(fechaEntrada, "yyyy-MM-dd"));
     }
@@ -61,7 +62,7 @@ export default function AñadirStockForm({ producto, onFormSubmit, onCancel }: A
     }
     
     startTransition(async () => {
-      // Llamamos a la nueva acción unificada, pasando el ID de la variante
+      // Llamamos a la acción unificada, pasando el ID de la variante
       const result = await agregarStock(producto.id, formData)
 
       if (!result.success) {
@@ -90,7 +91,7 @@ export default function AñadirStockForm({ producto, onFormSubmit, onCancel }: A
           onChange={(e) => setCantidad(e.target.value)}
           min="1"
           required
-          placeholder="Ej: 10" // <-- CORRECCIÓN: Placeholder simplificado
+          placeholder="Ej: 10"
           className="h-10 border-gray-300 focus:border-green-500 focus:ring-green-500/20 transition-all duration-200"
         />
         {fieldErrors?.cantidad && (
@@ -101,6 +102,8 @@ export default function AñadirStockForm({ producto, onFormSubmit, onCancel }: A
         )}
       </div>
 
+      {/* --- INICIO DE LA CORRECCIÓN --- */}
+      {/* Renderizado condicional de los campos de lote */}
       {producto.requiere_lote && (
         <>
             <div className="space-y-2">
@@ -113,7 +116,7 @@ export default function AñadirStockForm({ producto, onFormSubmit, onCancel }: A
                 name="numero_lote"
                 value={numeroLote}
                 onChange={(e) => setNumeroLote(e.target.value)}
-                required
+                required={producto.requiere_lote} // <-- Campo requerido solo si es necesario
                 placeholder="Ej: LOTE001"
                 className="h-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500/20 transition-all duration-200"
               />
@@ -130,7 +133,6 @@ export default function AñadirStockForm({ producto, onFormSubmit, onCancel }: A
                     <Calendar className="h-4 w-4 text-purple-600" />
                     Fecha de Entrada
                   </Label>
-                  {/* CORRECCIÓN: Se elimina la prop 'name' */}
                   <DatePicker date={fechaEntrada} onDateChange={setFechaEntrada} />
                 </div>
                 <div className="space-y-2">
@@ -138,12 +140,13 @@ export default function AñadirStockForm({ producto, onFormSubmit, onCancel }: A
                     <Clock className="h-4 w-4 text-red-600" />
                     Fecha de Caducidad <span className="text-xs text-gray-500">(opcional)</span>
                   </Label>
-                  {/* CORRECCIÓN: Se elimina la prop 'name' */}
                   <DatePicker date={fechaCaducidad} onDateChange={setFechaCaducidad} />
                 </div>
             </div>
         </>
       )}
+      {/* --- FIN DE LA CORRECCIÓN --- */}
+
 
       {formError && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-start gap-2">

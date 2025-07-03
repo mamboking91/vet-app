@@ -199,6 +199,13 @@ export async function actualizarProductoCatalogo(id: string, formData: FormData)
         return { success: false, error: { message: "ID de producto inválido." } };
     }
 
+    const { data: productoActual } = await supabase.from('productos_catalogo').select('tipo').eq('id', id).single();
+    if (!productoActual) {
+        return { success: false, error: { message: "Producto no encontrado." } };
+    }
+    const tipoProducto = productoActual.tipo;
+
+
     const rawFormData = Object.fromEntries(formData.entries());
     const validatedFields = UpdateProductoSchema.safeParse(rawFormData);
     if (!validatedFields.success) {
@@ -234,7 +241,7 @@ export async function actualizarProductoCatalogo(id: string, formData: FormData)
         finalImages[0].isPrimary = true;
     }
 
-    const { stock_no_lote_valor, existing_images: _, ...productCatalogDataToUpdate } = validatedFields.data;
+    const { stock_no_lote_valor, precio_venta, sku, existing_images: _, ...productCatalogDataToUpdate } = validatedFields.data;
     const dataToUpdateDb = {
         ...productCatalogDataToUpdate,
         imagenes: finalImages.length > 0 ? finalImages : null,
@@ -245,34 +252,42 @@ export async function actualizarProductoCatalogo(id: string, formData: FormData)
     if (dbError) {
         return { success: false, error: { message: `Error de base de datos al actualizar producto: ${dbError.message}` } };
     }
-
-    // --- INICIO DE LA CORRECCIÓN ---
-    // Después de actualizar el producto principal, buscamos la imagen primaria
-    // y la establecemos en TODAS las variantes.
+    
+    // --- INICIO DE LA CORRECCIÓN 2.1: PROPAGAR IMAGEN PRINCIPAL A VARIANTES ---
     const primaryImage = finalImages.find(img => img.isPrimary);
-    const primaryImageUrl = primaryImage ? primaryImage.url : (finalImages[0]?.url || null);
-
+    const primaryImageUrl = primaryImage ? primaryImage.url : (finalImages.length > 0 ? finalImages[0].url : null);
+    
     if (primaryImageUrl) {
-      // Obtenemos TODAS las variantes para este producto.
-      const { data: allVariants, error: variantsError } = await supabase
+      await supabase
+        .from('producto_variantes')
+        .update({ imagen_principal: primaryImageUrl })
+        .eq('producto_id', id);
+    }
+    // --- FIN DE LA CORRECCIÓN 2.1 ---
+
+
+    // --- INICIO DE LA CORRECCIÓN 3: GUARDAR DATOS DE PRODUCTO SIMPLE ---
+    if (tipoProducto === 'simple') {
+      const { data: varianteSimple, error: errVariante } = await supabase
         .from('producto_variantes')
         .select('id')
-        .eq('producto_id', id);
-
-      if (variantsError) {
-        console.error(`Error al obtener variantes para actualizar imagen principal: ${variantsError.message}`);
-      }
+        .eq('producto_id', id)
+        .limit(1)
+        .single();
       
-      // Si se encontraron variantes, actualizamos la imagen principal en todas ellas.
-      if (allVariants && allVariants.length > 0) {
-        const variantIds = allVariants.map(v => v.id);
+      if (varianteSimple && !errVariante) {
         await supabase
           .from('producto_variantes')
-          .update({ imagen_principal: primaryImageUrl })
-          .in('id', variantIds);
+          .update({
+            precio_venta: precio_venta,
+            sku: sku,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', varianteSimple.id);
       }
     }
-    // --- FIN DE LA CORRECCIÓN ---
+    // --- FIN DE LA CORRECCIÓN 3 ---
+
 
     const variantsDataStr = formData.get('variants_data') as string;
     if (variantsDataStr) {
@@ -316,6 +331,9 @@ export async function actualizarProductoCatalogo(id: string, formData: FormData)
     revalidatePath("/dashboard/inventario");
     revalidatePath(`/dashboard/inventario/${id}`);
     revalidatePath(`/dashboard/inventario/${id}/editar`);
+    revalidatePath("/tienda");
+    revalidatePath("/");
+    
     return { success: true, message: "Producto actualizado correctamente." };
 
   } catch (e: any) {
@@ -343,15 +361,17 @@ export async function actualizarVariante(varianteId: string, productoId: string,
   }
 
   const { sku, precio_venta } = validatedFields.data;
-
+  
   const dataToUpdate: { sku?: string | null; precio_venta?: number; imagen_url?: string; imagen_principal?: string; updated_at: string; } = {
     updated_at: new Date().toISOString(),
   };
 
   if (sku !== undefined) dataToUpdate.sku = sku || null;
   if (precio_venta !== undefined) dataToUpdate.precio_venta = precio_venta;
-
+  
   const imageFile = formData.get('imagen') as File | null;
+  const setComoPrincipal = formData.get('set_como_principal') === 'true';
+
   if (imageFile && imageFile.size > 0) {
     const BUCKET_NAME = 'product-images';
     const filePath = `${user.id}/${productoId}/${varianteId}-${imageFile.name}`;
@@ -366,8 +386,10 @@ export async function actualizarVariante(varianteId: string, productoId: string,
 
     const { data: publicUrlData } = supabase.storage.from(BUCKET_NAME).getPublicUrl(filePath);
     dataToUpdate.imagen_url = publicUrlData.publicUrl;
-    // Asignamos también como imagen principal de la variante
-    dataToUpdate.imagen_principal = publicUrlData.publicUrl;
+    
+    if (setComoPrincipal) {
+        dataToUpdate.imagen_principal = publicUrlData.publicUrl;
+    }
   }
 
   const { error: updateError } = await supabase
@@ -381,6 +403,8 @@ export async function actualizarVariante(varianteId: string, productoId: string,
 
   revalidatePath(`/dashboard/inventario/${productoId}`);
   revalidatePath(`/dashboard/inventario/${productoId}/variantes/${varianteId}/editar`);
+  revalidatePath("/tienda");
+  revalidatePath("/");
   return { success: true, message: "Variante actualizada correctamente." };
 }
 
@@ -483,8 +507,6 @@ export async function registrarEntradaLote(productoId: string, formData: FormDat
         return { success: false, error: { message: "ID de producto inválido." } };
     }
     
-    // Encontrar la variante asociada al producto. Asumimos que si se usa este formulario,
-    // el producto es simple y solo tiene una variante.
     const { data: variante, error: varianteError } = await supabase
         .from('producto_variantes')
         .select('id')
@@ -627,44 +649,57 @@ export async function agregarStock(varianteId: string, formData: FormData) {
   const { cantidad, numero_lote, fecha_entrada, fecha_caducidad } = validatedFields.data;
 
   try {
-      if (!numero_lote) {
-        return { success: false, error: { message: "El número de lote es requerido.", errors: { numero_lote: ["Campo requerido"] } } };
-      }
+      if (variante.producto_padre.requiere_lote) {
+        if (!numero_lote) {
+            return { success: false, error: { message: "El número de lote es requerido.", errors: { numero_lote: ["Campo requerido"] } } };
+        }
+        const { data: loteExistente } = await supabase
+            .from('lotes_producto')
+            .select('id, stock_lote')
+            .eq('variante_id', varianteId)
+            .eq('numero_lote', numero_lote)
+            .maybeSingle();
 
-      const { data: loteExistente } = await supabase
-        .from('lotes_producto')
-        .select('id, stock_lote')
-        .eq('variante_id', varianteId)
-        .eq('numero_lote', numero_lote)
-        .maybeSingle();
+        let loteId: string;
+        if (loteExistente) {
+            loteId = loteExistente.id;
+            const nuevoStock = loteExistente.stock_lote + cantidad;
+            await supabase.from('lotes_producto').update({ stock_lote: nuevoStock }).eq('id', loteId);
+        } else {
+            const { data: nuevoLote, error: insertError } = await supabase.from('lotes_producto').insert({
+            variante_id: varianteId,
+            numero_lote: numero_lote,
+            stock_lote: cantidad,
+            fecha_entrada: fecha_entrada || new Date().toISOString(),
+            fecha_caducidad: fecha_caducidad || null,
+            esta_activo: true
+            }).select('id').single();
+            if (insertError || !nuevoLote) throw insertError;
+            loteId = nuevoLote.id;
+        }
 
-      let loteId: string;
-      if (loteExistente) {
-        loteId = loteExistente.id;
-        const nuevoStock = loteExistente.stock_lote + cantidad;
-        await supabase.from('lotes_producto').update({ stock_lote: nuevoStock }).eq('id', loteId);
+        await supabase.from('movimientos_inventario').insert({
+            variante_id: varianteId,
+            producto_id: variante.producto_padre.id,
+            lote_id: loteId,
+            tipo_movimiento: 'Entrada Compra',
+            cantidad: cantidad,
+            notas: `Entrada de stock para lote ${numero_lote}.`
+        });
       } else {
-        const { data: nuevoLote, error: insertError } = await supabase.from('lotes_producto').insert({
-          variante_id: varianteId,
-          numero_lote: numero_lote,
-          stock_lote: cantidad,
-          fecha_entrada: fecha_entrada || new Date().toISOString(),
-          fecha_caducidad: fecha_caducidad || null,
-          esta_activo: true
-        }).select('id').single();
-        if (insertError || !nuevoLote) throw insertError;
-        loteId = nuevoLote.id;
+          const stockActual = variante.stock_actual || 0;
+          const nuevoStock = stockActual + cantidad;
+          await supabase.from('producto_variantes').update({ stock_actual: nuevoStock }).eq('id', varianteId);
+
+          await supabase.from('movimientos_inventario').insert({
+            variante_id: varianteId,
+            producto_id: variante.producto_padre.id,
+            lote_id: null,
+            tipo_movimiento: 'Entrada Compra',
+            cantidad: cantidad,
+            notas: 'Entrada de stock para producto sin lotes.'
+          });
       }
-
-      await supabase.from('movimientos_inventario').insert({
-        variante_id: varianteId,
-        producto_id: variante.producto_padre.id,
-        lote_id: loteId,
-        tipo_movimiento: 'Entrada Compra',
-        cantidad: cantidad,
-        notas: `Entrada de stock para lote ${numero_lote}.`
-      });
-
     revalidatePath(`/dashboard/inventario/${variante.producto_padre.id}`);
     revalidatePath('/dashboard/inventario');
     return { success: true };
