@@ -1,6 +1,7 @@
+// src/app/dashboard/pedidos/[pedidoId]/page.tsx
 "use client";
 
-import React, { useState, useTransition, useEffect } from 'react';
+import React, { useState, useTransition, useEffect, useCallback } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
@@ -19,11 +20,15 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { toast } from 'sonner';
 import { formatCurrency } from '@/lib/utils';
 
-// Tipos de datos para el pedido
+// ==================================================================
+// INICIO DE LA CORRECCIÓN
+// ==================================================================
+
+// 1. Se corrige el tipo para que refleje la relación real con `productos_catalogo`
 type ItemPedidoConProducto = {
   cantidad: number;
   precio_unitario: number;
-  productos_inventario: {
+  productos_catalogo: { // <- Cambio de `productos_inventario` a `productos_catalogo`
     id: string;
     nombre: string;
     imagenes: { url: string; isPrimary: boolean; order: number }[] | null;
@@ -50,9 +55,11 @@ export default function PedidoDetallePage() {
   const [pageError, setPageError] = useState<string | null>(null);
   const [isCancelling, startCancellingTransition] = useTransition();
 
-  const fetchOrder = async () => {
+  const fetchOrder = useCallback(async () => {
     setLoading(true);
     const supabase = createClientComponentClient();
+    
+    // 2. Se corrige la consulta para que use la tabla correcta (`productos_catalogo`)
     const { data, error } = await supabase
       .from('pedidos')
       .select(`
@@ -61,7 +68,7 @@ export default function PedidoDetallePage() {
         items_pedido (
           cantidad,
           precio_unitario,
-          productos_inventario ( id, nombre, imagenes, precio_venta, porcentaje_impuesto )
+          productos_catalogo ( id, nombre, imagenes, precio_venta, porcentaje_impuesto )
         )
       `)
       .eq('id', pedidoId)
@@ -72,15 +79,20 @@ export default function PedidoDetallePage() {
       setOrder(null);
     } else {
       setOrder(data);
+      setPageError(null);
     }
     setLoading(false);
-  };
+  }, [pedidoId]);
 
   useEffect(() => {
     if (pedidoId) {
       fetchOrder();
     }
-  }, [pedidoId]);
+  }, [pedidoId, fetchOrder]);
+
+  // ==================================================================
+  // FIN DE LA CORRECCIÓN (El resto del código permanece igual)
+  // ==================================================================
 
   const getStatusColor = (status: EstadoPedido) => {
     switch (status) {
@@ -107,8 +119,6 @@ export default function PedidoDetallePage() {
   };
 
   const handleEditOrder = () => {
-    // --- CORRECCIÓN AQUÍ ---
-    // Añadimos una comprobación para asegurar que 'order' no es null
     if (!order) {
       toast.error("No se puede editar un pedido que no se ha cargado.");
       return;
@@ -175,7 +185,8 @@ export default function PedidoDetallePage() {
                 </TableHeader>
                 <TableBody>
                   {order.items_pedido.map((item, index) => {
-                    const producto = item.productos_inventario;
+                    // 3. Se corrige la referencia para obtener los datos del producto
+                    const producto = item.productos_catalogo;
                     if (!producto) return <TableRow key={index}><TableCell colSpan={5}>Producto no disponible.</TableCell></TableRow>;
                     const precioBase = producto.precio_venta ?? 0;
                     const impuesto = producto.porcentaje_impuesto ?? 0;

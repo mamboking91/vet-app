@@ -8,6 +8,67 @@ import { z } from "zod";
 import { ESTADOS_PEDIDO, type EstadoPedido, type DireccionEnvio } from "./types";
 import { sendOrderConfirmationEmail } from "@/app/emails/actions";
 
+// ==================================================================
+// INICIO DE LA CORRECCIÓN
+// ==================================================================
+
+export async function getOrderById(orderId: string) {
+  const cookieStore = cookies();
+  const supabase = createServerActionClient({ cookies: () => cookieStore });
+  
+  // LA CORRECCIÓN ESTÁ EN ESTA CONSULTA
+  // Le decimos a Supabase explícitamente cómo unir las tablas.
+  const { data: order, error } = await supabase
+    .from('pedidos')
+    .select(
+      `
+      id,
+      created_at,
+      estado,
+      total,
+      direccion_envio,
+      email_cliente,
+      factura_id,
+      propietarios ( id, nombre_completo, email, telefono ),
+      items_pedido (
+        id,
+        cantidad,
+        precio_unitario,
+        variante:producto_variantes (id, nombre, precio_venta, sku)
+      )
+    `
+    )
+    .eq('id', orderId)
+    .single();
+
+  if (error) {
+    console.error('Error al cargar el pedido:', error);
+    throw new Error(`Pedido no encontrado o error al cargar: ${error.message}`);
+  }
+
+  return order;
+}
+
+export async function getRecentOrders() {
+  const cookieStore = cookies();
+  const supabase = createServerActionClient({ cookies: () => cookieStore });
+  const { data, error } = await supabase
+    .from('pedidos')
+    .select('id, created_at, total, estado, propietarios(nombre_completo)')
+    .order('created_at', { ascending: false })
+    .limit(10);
+
+  if (error) {
+    console.error('Error al cargar pedidos recientes:', error);
+    return [];
+  }
+  return data;
+}
+
+// ==================================================================
+// FIN DE LA CORRECCIÓN (EL RESTO DE TU CÓDIGO PERMANECE IGUAL)
+// ==================================================================
+
 const updateStatusSchema = z.object({
   estado: z.enum(ESTADOS_PEDIDO, {
     errorMap: () => ({ message: "Por favor, selecciona un estado válido." }),
@@ -215,8 +276,6 @@ export async function createManualOrder(payload: ManualOrderPayload) {
     }
     
     if(emailCliente && nombreCompleto && direccionEnvio){
-      // --- INICIO DE LA CORRECCIÓN ---
-      // Se añade la propiedad 'customerName' que faltaba
       await sendOrderConfirmationEmail({
           pedidoId: orderId,
           fechaPedido: new Date(),
@@ -234,9 +293,8 @@ export async function createManualOrder(payload: ManualOrderPayload) {
           })),
           total: total,
           emailTo: emailCliente,
-          customerName: nombreCompleto.split(' ')[0] || nombreCompleto, // Se añade la prop
+          customerName: nombreCompleto.split(' ')[0] || nombreCompleto,
       });
-      // --- FIN DE LA CORRECCIÓN ---
     }
 
     revalidatePath("/dashboard/pedidos");
