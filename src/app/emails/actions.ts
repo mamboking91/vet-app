@@ -3,7 +3,7 @@
 "use server";
 
 import { Resend } from 'resend';
-import { OrderConfirmationEmail } from '@/app/emails/OrderConfirmationEmail'; // Importa la plantilla
+import { OrderConfirmationEmail } from '@/app/emails/OrderConfirmationEmail';
 
 // Tipos para los datos que necesita la acción
 interface ItemEmail {
@@ -11,6 +11,8 @@ interface ItemEmail {
   cantidad: number;
   precio_final_unitario: number;
 }
+
+// Hacemos que nombre_completo sea requerido
 interface DireccionEmail {
     nombre_completo: string;
     direccion: string;
@@ -19,18 +21,17 @@ interface DireccionEmail {
     codigo_postal: string;
 }
 
-// --- INICIO DE LA CORRECCIÓN 1 ---
 interface OrderDataForEmail {
   pedidoId: string;
   fechaPedido: Date;
   direccionEnvio: DireccionEmail;
   items: ItemEmail[];
   total: number;
-  emailTo: string; // El correo del cliente
+  emailTo: string;
   logoUrl?: string | null;
-  customerName: string; // Añadimos la propiedad que falta
+  customerName: string;
+  isNewUser?: boolean;
 }
-// --- FIN DE LA CORRECCIÓN 1 ---
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -40,8 +41,6 @@ export async function sendOrderConfirmationEmail(orderData: OrderDataForEmail) {
       from: 'Gomera Mascotas <info@gomeramascotas.com>',
       to: [orderData.emailTo],
       subject: `Confirmación de tu pedido #${orderData.pedidoId.substring(0, 8)}`,
-      // --- INICIO DE LA CORRECCIÓN 2 ---
-      // Pasamos la propiedad customerName al componente del email
       react: OrderConfirmationEmail({
         pedidoId: orderData.pedidoId,
         fechaPedido: orderData.fechaPedido,
@@ -49,9 +48,9 @@ export async function sendOrderConfirmationEmail(orderData: OrderDataForEmail) {
         items: orderData.items,
         total: orderData.total,
         logoUrl: orderData.logoUrl,
-        customerName: orderData.customerName, // La pasamos aquí
+        customerName: orderData.customerName,
+        isNewUser: orderData.isNewUser,
       }),
-      // --- FIN DE LA CORRECCIÓN 2 ---
     });
 
     if (error) {

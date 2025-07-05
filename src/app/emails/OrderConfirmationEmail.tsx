@@ -1,18 +1,7 @@
 // src/app/emails/OrderConfirmationEmail.tsx
 
 import {
-  Body,
-  Container,
-  Head,
-  Hr,
-  Html,
-  Img,
-  Preview,
-  Section,
-  Text,
-  Row,
-  Column,
-  Link
+  Body, Container, Head, Hr, Html, Img, Preview, Section, Text, Row, Column, Link
 } from "@react-email/components";
 import * as React from "react";
 import { format } from "date-fns";
@@ -33,7 +22,6 @@ interface Direccion {
     codigo_postal: string;
 }
 
-// --- INICIO DE LA CORRECCIÓN ---
 interface OrderConfirmationEmailProps {
   pedidoId: string;
   fechaPedido: Date;
@@ -42,16 +30,14 @@ interface OrderConfirmationEmailProps {
   total: number;
   logoUrl?: string | null;
   isNewUser?: boolean;
-  customerName: string; // Añadimos la nueva prop aquí
+  customerName: string;
 }
-// --- FIN DE LA CORRECCIÓN ---
 
 const main = {
   backgroundColor: "#f6f9fc",
   fontFamily: '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Ubuntu,sans-serif',
 };
 
-// ... (el resto de los estilos no cambian)
 const container = {
   backgroundColor: "#ffffff",
   margin: "0 auto",
@@ -89,7 +75,7 @@ export const OrderConfirmationEmail = ({
   total,
   logoUrl,
   isNewUser = false,
-  customerName, // Recibimos la nueva prop
+  customerName,
 }: OrderConfirmationEmailProps) => {
   const finalLogoUrl = logoUrl || "https://placehold.co/120x50/e2e8f0/e2e8f0?text=Gomera+Mascotas";
 
@@ -102,7 +88,6 @@ export const OrderConfirmationEmail = ({
           <Section style={box}>
             <Img src={finalLogoUrl} width="120" height="auto" alt="Gomera Mascotas" />
             <Hr style={hr} />
-            {/* --- CORRECCIÓN: Usamos la nueva prop para un saludo más personal --- */}
             <Text style={paragraph}>
               ¡Gracias por tu compra, {customerName}!
             </Text>
@@ -137,7 +122,7 @@ export const OrderConfirmationEmail = ({
               </Row>
             ))}
             <Hr style={hr} />
-
+            
             <Row>
               <Column>
                   <Text style={{...paragraph, fontWeight: "bold"}}>Total</Text>
@@ -151,7 +136,6 @@ export const OrderConfirmationEmail = ({
             <Section>
               <Text style={{ ...paragraph, fontWeight: "bold" }}>Dirección de envío</Text>
               <Text style={paragraph}>
-                  {/* --- CORRECCIÓN: Usamos el nombre completo de la dirección para el destinatario --- */}
                   {direccionEnvio.nombre_completo}<br/>
                   {direccionEnvio.direccion}<br/>
                   {direccionEnvio.codigo_postal} {direccionEnvio.localidad}, {direccionEnvio.provincia}
