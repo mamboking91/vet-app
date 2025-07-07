@@ -5,12 +5,11 @@ import React, { useState, useTransition, useEffect, useCallback } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
-import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from '@/components/ui/badge';
-import { ChevronLeft, User, Ghost, Phone, Mail, FileText, XCircle, AlertTriangle, Edit3 } from 'lucide-react';
+import { ChevronLeft, User, Ghost, Mail, FileText, XCircle, AlertTriangle, Edit3, PercentIcon } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import type { Pedido, DireccionEnvio, EstadoPedido } from '@/app/dashboard/pedidos/types';
@@ -19,21 +18,21 @@ import { cancelarPedido } from '@/app/dashboard/pedidos/actions';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import { formatCurrency } from '@/lib/utils';
+import ProductImage from '@/components/ui/ProductImage'; // Componente de imagen robusto
 
-// ==================================================================
-// INICIO DE LA CORRECCIÓN
-// ==================================================================
-
-// 1. Se corrige el tipo para que refleje la relación real con `productos_catalogo`
-type ItemPedidoConProducto = {
+// Tipos corregidos para reflejar la estructura de la consulta
+type ItemPedidoConDetalles = {
   cantidad: number;
   precio_unitario: number;
-  productos_catalogo: { // <- Cambio de `productos_inventario` a `productos_catalogo`
+  producto_variantes: {
     id: string;
-    nombre: string;
-    imagenes: { url: string; isPrimary: boolean; order: number }[] | null;
-    precio_venta: number | null;
-    porcentaje_impuesto: number | null;
+    sku: string | null;
+    imagen_url: string | null;
+    productos_catalogo: {
+        id: string;
+        nombre: string;
+        porcentaje_impuesto: number;
+    } | null;
   } | null;
 };
 
@@ -42,7 +41,9 @@ type PedidoCompleto = Pedido & {
     id: string;
     nombre_completo: string;
   } | null;
-  items_pedido: ItemPedidoConProducto[];
+  items_pedido: ItemPedidoConDetalles[];
+  monto_descuento: number | null;
+  codigo_descuento: string | null;
 };
 
 export default function PedidoDetallePage() {
@@ -59,7 +60,7 @@ export default function PedidoDetallePage() {
     setLoading(true);
     const supabase = createClientComponentClient();
     
-    // 2. Se corrige la consulta para que use la tabla correcta (`productos_catalogo`)
+    // --- CONSULTA CORREGIDA ---
     const { data, error } = await supabase
       .from('pedidos')
       .select(`
@@ -68,7 +69,12 @@ export default function PedidoDetallePage() {
         items_pedido (
           cantidad,
           precio_unitario,
-          productos_catalogo ( id, nombre, imagenes, precio_venta, porcentaje_impuesto )
+          producto_variantes (
+            id,
+            sku,
+            imagen_url,
+            productos_catalogo ( id, nombre, porcentaje_impuesto )
+          )
         )
       `)
       .eq('id', pedidoId)
@@ -89,10 +95,6 @@ export default function PedidoDetallePage() {
       fetchOrder();
     }
   }, [pedidoId, fetchOrder]);
-
-  // ==================================================================
-  // FIN DE LA CORRECCIÓN (El resto del código permanece igual)
-  // ==================================================================
 
   const getStatusColor = (status: EstadoPedido) => {
     switch (status) {
@@ -118,14 +120,6 @@ export default function PedidoDetallePage() {
     });
   };
 
-  const handleEditOrder = () => {
-    if (!order) {
-      toast.error("No se puede editar un pedido que no se ha cargado.");
-      return;
-    }
-    router.push(`/dashboard/pedidos/${order.id}/editar`);
-  };
-
   if (loading) {
     return <div className="text-center py-8">Cargando detalles del pedido...</div>;
   }
@@ -144,7 +138,7 @@ export default function PedidoDetallePage() {
   }
   
   const direccion = order.direccion_envio || {};
-  const nombreCliente = order.propietarios?.nombre_completo || direccion.nombre_completo || `${direccion.nombre || ''} ${direccion.apellidos || ''}`.trim() || 'Cliente Invitado';
+  const nombreCliente = order.propietarios?.nombre_completo || direccion.nombre_completo || 'Cliente Invitado';
 
   return (
     <div>
@@ -154,18 +148,6 @@ export default function PedidoDetallePage() {
         </Button>
         <h1 className="text-3xl font-bold">Detalle del Pedido</h1>
         <Badge className={`ml-auto text-base px-4 py-1 capitalize ${getStatusColor(order.estado)}`}>{order.estado.replace('_', ' ')}</Badge>
-        {(order.estado === 'procesando' || order.estado === 'pendiente_pago') && (
-            <Button variant="outline" size="sm" onClick={handleEditOrder} disabled={isCancelling}><Edit3 className="mr-2 h-4 w-4" /> Editar Pedido</Button>
-        )}
-        {(order.estado !== 'cancelado' && order.estado !== 'completado') && (
-            <AlertDialog>
-                <AlertDialogTrigger asChild><Button variant="destructive" size="sm" disabled={isCancelling}><XCircle className="mr-2 h-4 w-4" /> Cancelar Pedido</Button></AlertDialogTrigger>
-                <AlertDialogContent>
-                    <AlertDialogHeader><AlertDialogTitle className="flex items-center gap-2"><AlertTriangle className="h-5 w-5 text-destructive" /> ¿Estás seguro de cancelar este pedido?</AlertDialogTitle><AlertDialogDescription>Esta acción marcará el pedido como "Cancelado" y el stock de los productos se repondrá. Esta acción no se puede deshacer.<br/><p className="mt-2 text-sm font-semibold">Pedido Nº: {order.id.substring(0,8)}</p><p className="mt-1 text-sm font-semibold">Cliente: {nombreCliente}</p></AlertDialogDescription></AlertDialogHeader>
-                    <AlertDialogFooter><AlertDialogCancel disabled={isCancelling}>No, mantener</AlertDialogCancel><AlertDialogAction onClick={handleCancelOrder} disabled={isCancelling} className="bg-destructive hover:bg-destructive/90">{isCancelling ? "Cancelando..." : "Sí, cancelar"}</AlertDialogAction></AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
-        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -185,23 +167,29 @@ export default function PedidoDetallePage() {
                 </TableHeader>
                 <TableBody>
                   {order.items_pedido.map((item, index) => {
-                    // 3. Se corrige la referencia para obtener los datos del producto
-                    const producto = item.productos_catalogo;
-                    if (!producto) return <TableRow key={index}><TableCell colSpan={5}>Producto no disponible.</TableCell></TableRow>;
-                    const precioBase = producto.precio_venta ?? 0;
-                    const impuesto = producto.porcentaje_impuesto ?? 0;
-                    const totalItem = item.cantidad * item.precio_unitario;
+                    const variante = item.producto_variantes;
+                    if (!variante || !variante.productos_catalogo) return <TableRow key={index}><TableCell colSpan={5}>Producto no disponible.</TableCell></TableRow>;
+                    
+                    const precioBase = item.precio_unitario;
+                    const impuesto = variante.productos_catalogo.porcentaje_impuesto ?? 0;
+                    const totalItem = precioBase * item.cantidad * (1 + impuesto / 100);
 
                     return (
                       <TableRow key={index}>
                         <TableCell>
                           <div className="flex items-center gap-3">
-                            <Link href={`/dashboard/inventario/${producto.id}`}>
+                            <Link href={`/dashboard/inventario/${variante.productos_catalogo.id}`}>
                               <div className="w-12 h-12 bg-gray-100 rounded-md flex-shrink-0">
-                                {producto.imagenes?.[0] && <Image src={producto.imagenes[0].url} alt={producto.nombre} width={48} height={48} className="object-cover rounded-md"/>}
+                                <ProductImage 
+                                  src={variante.imagen_url || ''} 
+                                  alt={variante.productos_catalogo.nombre}
+                                  width={48} 
+                                  height={48} 
+                                  className="object-cover rounded-md"
+                                />
                               </div>
                             </Link>
-                             <Link href={`/dashboard/inventario/${producto.id}`} className="font-semibold text-gray-800 hover:underline">{producto.nombre}</Link>
+                             <Link href={`/dashboard/inventario/${variante.productos_catalogo.id}`} className="font-semibold text-gray-800 hover:underline">{variante.productos_catalogo.nombre}</Link>
                           </div>
                         </TableCell>
                         <TableCell className="text-center">{item.cantidad}</TableCell>
@@ -227,23 +215,25 @@ export default function PedidoDetallePage() {
           <Card>
             <CardHeader><CardTitle>Resumen Financiero</CardTitle></CardHeader>
             <CardContent className="space-y-2 text-sm">
-              <div className="flex justify-between font-bold text-lg"><span className="text-gray-600">Total:</span><span className="font-medium text-gray-900">{formatCurrency(order.total)}</span></div>
-              <div className="flex justify-between"><span className="text-gray-600">Factura:</span>
+              {/* CORRECCIÓN: Se añade el desglose del descuento */}
+              {order.monto_descuento && order.monto_descuento > 0 && (
+                <div className="flex justify-between text-green-600">
+                    <span className="font-medium flex items-center gap-1">
+                        <PercentIcon className="h-4 w-4" />
+                        Descuento ({order.codigo_descuento || 'N/A'}):
+                    </span>
+                    <span className="font-medium">-{formatCurrency(order.monto_descuento)}</span>
+                </div>
+              )}
+              <div className="flex justify-between font-bold text-lg border-t pt-2 mt-2">
+                <span className="text-gray-600">Total Pagado:</span>
+                <span className="font-medium text-gray-900">{formatCurrency(order.total)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Factura:</span>
                 {order.factura_id ? <Link href={`/dashboard/facturacion/${order.factura_id}`} className="text-blue-600 hover:underline flex items-center gap-1">Ver Factura <FileText className="h-4 w-4"/></Link> : <span className="text-gray-500">No generada</span>}
               </div>
             </CardContent>
-          </Card>
-          <Card>
-            <CardHeader><CardTitle>Información del Cliente</CardTitle></CardHeader>
-            <CardContent className="space-y-3 text-sm">
-                <div className="flex items-center gap-3">{order.propietario_id ? <User className="h-5 w-5 text-blue-500"/> : <Ghost className="h-5 w-5 text-gray-400"/>}<div className="font-semibold">{nombreCliente}</div>{order.propietario_id && <Button asChild size="sm" variant="outline"><Link href={`/dashboard/propietarios/${order.propietario_id}`}>Ver Ficha</Link></Button>}</div>
-                <div className="flex items-center gap-3"><Mail className="h-4 w-4 text-gray-400"/><a href={`mailto:${order.email_cliente}`} className="text-blue-600 hover:underline">{order.email_cliente}</a></div>
-                {direccion?.telefono && <div className="flex items-center gap-3"><Phone className="h-4 w-4 text-gray-400"/><span>{direccion.telefono}</span></div>}
-            </CardContent>
-          </Card>
-           <Card>
-            <CardHeader><CardTitle>Dirección de Envío</CardTitle></CardHeader>
-            <CardContent><address className="not-italic text-sm text-gray-600">{direccion?.direccion && <span>{direccion.direccion}<br/></span>}{(direccion?.codigo_postal || direccion?.localidad) && <span>{direccion.codigo_postal} {direccion.localidad}<br/></span>}{direccion?.provincia && <span>{direccion.provincia}</span>}</address></CardContent>
           </Card>
         </div>
       </div>

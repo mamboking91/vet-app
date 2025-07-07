@@ -91,6 +91,8 @@ export type FacturaHeaderFromDB = {
   pacientes: PacienteInfoDetalle | null;
   created_at: string;
   updated_at: string | null;
+  monto_descuento: number | null;
+  codigo_descuento: string | null;
 };
 
 export const metodosDePagoOpciones = [
