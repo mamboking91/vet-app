@@ -5,27 +5,18 @@ import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { CheckCircle, Home } from 'lucide-react';
+import { CheckCircle, Home, PercentIcon } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import ProductImage from '@/components/ui/ProductImage';
 
-// --- TIPOS DE DATOS CORREGIDOS ---
-type ItemPedidoConDetalles = {
-  cantidad: number;
-  precio_unitario: number;
-  producto_variantes: {
-    productos_catalogo: {
-        nombre: string;
-        imagenes: string[] | null; // La imagen es un array de strings
-    } | null;
-  } | null;
-};
-
+// Se añaden los campos de descuento
 type PedidoConfirmacion = {
   id: string;
   total: number;
   monto_descuento: number | null;
   codigo_descuento: string | null;
+  tipo_descuento: 'porcentaje' | 'fijo' | null;
+  valor_descuento: number | null;
   direccion_envio: {
     nombre_completo?: string;
     direccion: string;
@@ -37,12 +28,19 @@ type PedidoConfirmacion = {
   factura: {
     subtotal: number;
     monto_impuesto: number;
-    codigo_descuento: string | null; // Pedimos el código desde la factura
   } | null;
-  items_pedido: ItemPedidoConDetalles[];
+  items_pedido: {
+    cantidad: number;
+    precio_unitario: number;
+    producto_variantes: {
+      productos_catalogo: {
+          nombre: string;
+          imagenes: { url: string }[] | null;
+      } | null;
+    } | null;
+  }[];
 };
 
-// --- LÓGICA DE OBTENCIÓN DE DATOS ---
 async function findOrderWithRetry(sessionId: string, retries = 5, delay = 1500): Promise<PedidoConfirmacion | null> {
   const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -50,34 +48,24 @@ async function findOrderWithRetry(sessionId: string, retries = 5, delay = 1500):
   );
 
   for (let i = 0; i < retries; i++) {
-    // --- CONSULTA CORREGIDA Y FINAL ---
+    // =====> INICIO DE LA CORRECCIÓN <=====
+    // Se añaden los campos del descuento a la consulta
     const { data: orderData, error } = await supabaseAdmin
       .from('pedidos')
       .select(`
-        id,
-        total,
-        monto_descuento,
-        codigo_descuento,
-        direccion_envio,
-        email_cliente,
-        factura:factura_id (
-          subtotal,
-          monto_impuesto,
-          codigo_descuento
-        ),
+        id, total, monto_descuento, codigo_descuento, tipo_descuento, valor_descuento,
+        direccion_envio, email_cliente,
+        factura:factura_id ( subtotal, monto_impuesto ),
         items_pedido (
-          cantidad,
-          precio_unitario,
+          cantidad, precio_unitario,
           producto_variantes (
-            productos_catalogo ( 
-              nombre,
-              imagenes 
-            )
+            productos_catalogo ( nombre, imagenes )
           )
         )
       `)
       .eq('checkout_reference', sessionId)
       .single<PedidoConfirmacion>();
+    // =====> FIN DE LA CORRECCIÓN <=====
 
     if (orderData && orderData.items_pedido.length > 0) {
       return orderData;
@@ -92,7 +80,6 @@ async function findOrderWithRetry(sessionId: string, retries = 5, delay = 1500):
   return null;
 }
 
-// --- COMPONENTE DE PÁGINA ---
 export default async function ConfirmationPage({ searchParams }: { searchParams: { session_id?: string } }) {
   if (!searchParams.session_id) {
     redirect('/');
@@ -105,10 +92,10 @@ export default async function ConfirmationPage({ searchParams }: { searchParams:
     notFound();
   }
 
-  const { direccion_envio, factura, total, monto_descuento, email_cliente, items_pedido } = order;
+  const { direccion_envio, factura, total, monto_descuento, codigo_descuento, tipo_descuento, valor_descuento, email_cliente, items_pedido } = order;
   const nombreCompleto = direccion_envio.nombre_completo || 'Cliente';
-  // Usamos el código de la factura, que es más fiable
-  const codigoDescuentoFinal = factura?.codigo_descuento || order.codigo_descuento;
+  const subtotal = factura?.subtotal ?? items_pedido.reduce((acc, item) => acc + (item.precio_unitario * item.cantidad), 0);
+  const totalImpuestos = factura?.monto_impuesto ?? (total - subtotal + (monto_descuento || 0));
 
   return (
     <div className="bg-gray-50 min-h-screen py-12 px-4 sm:px-6 lg:px-8">
@@ -130,8 +117,7 @@ export default async function ConfirmationPage({ searchParams }: { searchParams:
                 if (!variante || !catalogo) return null;
                 
                 const totalItem = item.precio_unitario * item.cantidad;
-                // --- CORRECCIÓN DE IMAGEN ---
-                const imagenUrl = catalogo.imagenes?.[0] || '';
+                const imagenUrl = catalogo.imagenes?.[0]?.url || 'https://placehold.co/64x64/e2e8f0/e2e8f0?text=G';
 
                 return (
                   <div key={index} className="flex items-center justify-between py-4">
@@ -159,24 +145,26 @@ export default async function ConfirmationPage({ searchParams }: { searchParams:
             <div className="border-t border-gray-200 mt-4 pt-4 space-y-2 text-sm">
                <div className="flex justify-between">
                 <span className="text-gray-600">Subtotal:</span>
-                <span className="font-medium text-gray-900">{formatCurrency(factura?.subtotal)}</span>
+                <span className="font-medium text-gray-900">{formatCurrency(subtotal)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600">Impuestos (IGIC):</span>
-                <span className="font-medium text-gray-900">{formatCurrency(factura?.monto_impuesto)}</span>
+                <span className="font-medium text-gray-900">{formatCurrency(totalImpuestos)}</span>
               </div>
               
+              {/* =====> INICIO DE LA CORRECCIÓN <===== */}
               {monto_descuento && monto_descuento > 0 && (
                  <div className="flex justify-between text-green-600">
                     <span className="font-medium">
-                      {/* --- CORRECCIÓN VISUAL DEL DESCUENTO --- */}
-                      Descuento {codigoDescuentoFinal ? <span className="font-semibold uppercase">({codigoDescuentoFinal})</span> : ''}
+                      Descuento ({codigo_descuento})
+                      {tipo_descuento === 'porcentaje' && ` - ${valor_descuento}%`}
                     </span>
                     <span className="font-medium">
                       -{formatCurrency(monto_descuento)}
                     </span>
                   </div>
               )}
+              {/* =====> FIN DE LA CORRECCIÓN <===== */}
 
               <div className="flex justify-between font-bold text-base pt-2 border-t mt-2">
                 <span>Total Pagado:</span>

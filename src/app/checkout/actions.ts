@@ -9,6 +9,7 @@ import Stripe from 'stripe';
 import SumUp from '@sumup/sdk';
 import type { CartItem } from "@/context/CartContext";
 import type { ImagenProducto } from "@/app/dashboard/inventario/types";
+import type { CodigoDescuento } from "@/app/dashboard/descuentos/types";
 import crypto from 'crypto';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
@@ -24,7 +25,6 @@ const checkoutSchema = z.object({
   create_account: z.string().optional(),
 });
 
-// Función auxiliar para validar y preparar datos
 async function prepareCheckoutData(cartItems: CartItem[], formData: FormData) {
     const supabase = createServerActionClient({ cookies: () => cookies() });
     
@@ -40,11 +40,9 @@ async function prepareCheckoutData(cartItems: CartItem[], formData: FormData) {
 
     const productIds = cartItems.map(item => item.id);
     
-    // --- CORRECCIÓN ---
-    // La consulta ahora es más robusta y selecciona explícitamente la imagen principal del producto.
     const { data: productsData, error: productsError } = await supabase
-      .from('productos_inventario_con_stock') // Usamos la vista que ya tienes
-      .select('id, nombre, precio_venta, porcentaje_impuesto, imagen_producto_principal') // <-- SELECCIÓN CORREGIDA
+      .from('productos_inventario_con_stock')
+      .select('id, nombre, precio_venta, porcentaje_impuesto, imagen_producto_principal')
       .in('id', productIds);
 
     if (productsError) {
@@ -66,8 +64,6 @@ async function prepareCheckoutData(cartItems: CartItem[], formData: FormData) {
         precio_venta: precioBase,
         porcentaje_impuesto: impuesto,
         precio_final_unitario: parseFloat(precioFinalUnitario.toFixed(2)),
-        // --- CORRECCIÓN ---
-        // Se asegura de que la propiedad `imagenes` sea un array, incluso si está vacío.
         imagenes: productInfo.imagen_producto_principal ? [{ url: productInfo.imagen_producto_principal, isPrimary: true, order: 0 }] : [],
       };
     });
@@ -75,8 +71,11 @@ async function prepareCheckoutData(cartItems: CartItem[], formData: FormData) {
     return { validatedAddress: validatedFields.data, detailedItems: itemsConPrecio };
 }
 
-
-export async function createStripeCheckout(cartItems: CartItem[], discountAmount: number, formData: FormData) {
+export async function createStripeCheckout(
+  cartItems: CartItem[], 
+  descuento: CodigoDescuento | null,
+  formData: FormData
+) {
   try {
     const { validatedAddress, detailedItems } = await prepareCheckoutData(cartItems, formData);
 
@@ -85,8 +84,6 @@ export async function createStripeCheckout(cartItems: CartItem[], discountAmount
         currency: 'eur',
         product_data: {
           name: item.nombre,
-          // --- CORRECCIÓN ---
-          // Stripe espera un array de strings para las imágenes.
           images: item.imagenes?.map((img: ImagenProducto) => img.url) || [],
         },
         unit_amount: Math.round(item.precio_final_unitario * 100),
@@ -94,10 +91,14 @@ export async function createStripeCheckout(cartItems: CartItem[], discountAmount
       quantity: item.quantity,
     }));
 
+    const subtotal = detailedItems.reduce((acc, item) => acc + (item.precio_final_unitario * item.quantity), 0);
+    const discountAmount = descuento ? (descuento.tipo_descuento === 'fijo' ? descuento.valor : (subtotal * descuento.valor / 100)) : 0;
+
     const coupon = discountAmount > 0 ? await stripe.coupons.create({
         amount_off: Math.round(discountAmount * 100),
         currency: 'eur',
-        duration: 'once'
+        duration: 'once',
+        name: `Descuento: ${descuento?.codigo || 'N/A'}`
     }) : null;
 
     const { data: authData } = await createServerActionClient({ cookies: () => cookies() }).auth.getUser();
@@ -119,6 +120,11 @@ export async function createStripeCheckout(cartItems: CartItem[], discountAmount
             precio_unitario: item.precio_venta,
             porcentaje_impuesto: item.porcentaje_impuesto,
         }))),
+        // --- ESTA ES LA PARTE MÁS IMPORTANTE ---
+        // Enviamos todos los detalles del descuento directamente.
+        codigo_descuento: descuento?.codigo || null,
+        tipo_descuento: descuento?.tipo_descuento || null,
+        valor_descuento: descuento?.valor?.toString() || null,
       }
     });
 
@@ -130,11 +136,17 @@ export async function createStripeCheckout(cartItems: CartItem[], discountAmount
   }
 }
 
-export async function createSumupCheckout(cartItems: CartItem[], discountAmount: number, formData: FormData) {
+// También actualizamos SumUp para que sea consistente
+export async function createSumupCheckout(
+  cartItems: CartItem[], 
+  descuento: CodigoDescuento | null,
+  formData: FormData
+) {
   try {
     const { validatedAddress, detailedItems } = await prepareCheckoutData(cartItems, formData);
 
     const subtotal = detailedItems.reduce((acc, item) => acc + (item.precio_final_unitario * item.quantity), 0);
+    const discountAmount = descuento ? (descuento.tipo_descuento === 'fijo' ? descuento.valor : (subtotal * descuento.valor / 100)) : 0;
     const totalFinal = subtotal - discountAmount;
 
     const sumup = new SumUp({ apiKey: process.env.SUMUP_CLIENT_SECRET! });
@@ -155,6 +167,9 @@ export async function createSumupCheckout(cartItems: CartItem[], discountAmount:
             cantidad: item.quantity,
             precio_unitario: item.precio_final_unitario
         }))),
+        codigo_descuento: descuento?.codigo || null,
+        tipo_descuento: descuento?.tipo_descuento || null,
+        valor_descuento: descuento?.valor?.toString() || null,
       },
       return_url: `${process.env.NEXT_PUBLIC_SITE_URL}/pedido/confirmacion`
     };

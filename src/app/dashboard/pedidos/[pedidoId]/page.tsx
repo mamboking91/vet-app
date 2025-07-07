@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from '@/components/ui/badge';
 import { ChevronLeft, User, Ghost, Mail, FileText, XCircle, AlertTriangle, Edit3, PercentIcon } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import type { Pedido, DireccionEnvio, EstadoPedido } from '@/app/dashboard/pedidos/types';
 import UpdateOrderStatus from '@/app/dashboard/pedidos/UpdateOrderStatus';
@@ -18,7 +18,7 @@ import { cancelarPedido } from '@/app/dashboard/pedidos/actions';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import { formatCurrency } from '@/lib/utils';
-import ProductImage from '@/components/ui/ProductImage'; // Componente de imagen robusto
+import ProductImage from '@/components/ui/ProductImage';
 
 // Tipos corregidos para reflejar la estructura de la consulta
 type ItemPedidoConDetalles = {
@@ -36,6 +36,7 @@ type ItemPedidoConDetalles = {
   } | null;
 };
 
+// Se añaden los campos de descuento al tipo local
 type PedidoCompleto = Pedido & {
   propietarios: {
     id: string;
@@ -44,6 +45,8 @@ type PedidoCompleto = Pedido & {
   items_pedido: ItemPedidoConDetalles[];
   monto_descuento: number | null;
   codigo_descuento: string | null;
+  tipo_descuento: 'porcentaje' | 'fijo' | null;
+  valor_descuento: number | null;
 };
 
 export default function PedidoDetallePage() {
@@ -60,11 +63,14 @@ export default function PedidoDetallePage() {
     setLoading(true);
     const supabase = createClientComponentClient();
     
-    // --- CONSULTA CORREGIDA ---
+    // =====> INICIO DE LA CORRECCIÓN <=====
+    // Se añaden explícitamente los campos del descuento a la consulta
     const { data, error } = await supabase
       .from('pedidos')
       .select(`
         *,
+        tipo_descuento,
+        valor_descuento,
         propietarios ( id, nombre_completo ),
         items_pedido (
           cantidad,
@@ -79,6 +85,7 @@ export default function PedidoDetallePage() {
       `)
       .eq('id', pedidoId)
       .single<PedidoCompleto>();
+    // =====> FIN DE LA CORRECCIÓN <=====
     
     if (error || !data) {
       setPageError("Pedido no encontrado o error al cargar: " + (error?.message || ""));
@@ -215,16 +222,18 @@ export default function PedidoDetallePage() {
           <Card>
             <CardHeader><CardTitle>Resumen Financiero</CardTitle></CardHeader>
             <CardContent className="space-y-2 text-sm">
-              {/* CORRECCIÓN: Se añade el desglose del descuento */}
+              {/* =====> INICIO DE LA CORRECCIÓN <===== */}
               {order.monto_descuento && order.monto_descuento > 0 && (
                 <div className="flex justify-between text-green-600">
                     <span className="font-medium flex items-center gap-1">
                         <PercentIcon className="h-4 w-4" />
-                        Descuento ({order.codigo_descuento || 'N/A'}):
+                        Descuento ({order.codigo_descuento || 'N/A'})
+                        {order.tipo_descuento === 'porcentaje' && ` - ${order.valor_descuento}%`}
                     </span>
                     <span className="font-medium">-{formatCurrency(order.monto_descuento)}</span>
                 </div>
               )}
+              {/* =====> FIN DE LA CORRECCIÓN <===== */}
               <div className="flex justify-between font-bold text-lg border-t pt-2 mt-2">
                 <span className="text-gray-600">Total Pagado:</span>
                 <span className="font-medium text-gray-900">{formatCurrency(order.total)}</span>

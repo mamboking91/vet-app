@@ -10,10 +10,11 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from "@/components/ui/table";
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, AlertTriangle, PercentIcon } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { formatCurrency } from '@/lib/utils';
+import ProductImage from '@/components/ui/ProductImage';
 
 // Tipos de datos corregidos para esta página
 type ItemPedido = {
@@ -24,18 +25,25 @@ type ItemPedido = {
     id: string;
     imagen_url: string | null;
     productos_catalogo: {
-      nombre: string;
-      porcentaje_impuesto: number;
+        nombre: string;
+        porcentaje_impuesto: number;
+        imagenes: { url: string }[] | null; // <-- Se añade para tener una imagen de fallback
     } | null;
   } | null;
 };
 
+// Se añaden los campos de descuento al tipo local
 type PedidoCompleto = {
   id: string;
   created_at: string;
   estado: string;
   total: number;
+  subtotal: number; // Asumiendo que subtotal se calcula o se trae
+  monto_impuesto: number; // Asumiendo que monto_impuesto se calcula o se trae
   monto_descuento: number | null;
+  codigo_descuento: string | null;
+  tipo_descuento: 'porcentaje' | 'fijo' | null;
+  valor_descuento: number | null;
   direccion_envio: {
     nombre_completo?: string;
     direccion?: string;
@@ -66,23 +74,30 @@ export default function DetallePedidoClientePage() {
       return;
     }
 
-    // --- CONSULTA CORREGIDA ---
+    // =====> INICIO DE LA CORRECCIÓN <=====
+    // Se añaden los campos del descuento a la consulta
     const { data, error: dbError } = await supabase
       .from('pedidos')
       .select(`
         id, created_at, estado, total, monto_descuento, direccion_envio,
+        codigo_descuento, tipo_descuento, valor_descuento,
         items_pedido (
           id, cantidad, precio_unitario,
           producto_variantes (
             id,
             imagen_url,
-            productos_catalogo ( nombre, porcentaje_impuesto )
+            productos_catalogo ( 
+                nombre, 
+                porcentaje_impuesto,
+                imagenes
+            )
           )
         )
       `)
       .eq('id', pedidoId)
       .eq('propietario_id', user.id)
       .single<PedidoCompleto>();
+    // =====> FIN DE LA CORRECCIÓN <=====
 
     if (dbError || !data) {
       setError("Pedido no encontrado o no tienes permiso para verlo.");
@@ -119,10 +134,13 @@ export default function DetallePedidoClientePage() {
 
   const direccion = order.direccion_envio || {};
   const statusInfo = { text: order.estado.replace('_', ' '), color: 'bg-blue-100 text-blue-800' };
+  
+  // Cálculo de totales para el resumen
   const subtotal = order.items_pedido.reduce((acc, item) => {
     const impuesto = item.producto_variantes?.productos_catalogo?.porcentaje_impuesto ?? 0;
-    const precioBase = item.precio_unitario / (1 + impuesto / 100);
-    return acc + (precioBase * item.cantidad);
+    const precioFinal = item.precio_unitario * item.cantidad;
+    const precioBase = precioFinal / (1 + impuesto / 100);
+    return acc + precioBase;
   }, 0);
   const totalImpuestos = order.total - subtotal + (order.monto_descuento || 0);
 
@@ -135,7 +153,6 @@ export default function DetallePedidoClientePage() {
         <div>
           <h1 className="text-2xl font-bold">Detalles del Pedido</h1>
           <p className="text-sm text-muted-foreground">
-            {/* CORRECCIÓN AQUÍ */}
             Realizado el {format(new Date(order.created_at), "dd 'de' MMMM 'de' yyyy", { locale: es })}
           </p>
         </div>
@@ -156,22 +173,24 @@ export default function DetallePedidoClientePage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {order.items_pedido.map((item) => {
+              {order.items_pedido.map((item, index) => {
                 const variante = item.producto_variantes;
-                if (!variante || !variante.productos_catalogo) return null;
+                const catalogo = variante?.productos_catalogo;
+                if (!variante || !catalogo) return null;
                 const totalItem = item.precio_unitario * item.cantidad;
+                const imagenUrl = variante.imagen_url || catalogo.imagenes?.[0]?.url || 'https://placehold.co/64x64/e2e8f0/e2e8f0?text=G';
                 return (
                   <TableRow key={item.id}>
                     <TableCell>
                       <div className="flex items-center gap-4">
                         <Image
-                          src={variante.imagen_url || 'https://placehold.co/64x64/e2e8f0/e2e8f0?text=G'}
-                          alt={variante.productos_catalogo.nombre}
+                          src={imagenUrl}
+                          alt={catalogo.nombre}
                           width={64}
                           height={64}
                           className="rounded-md object-cover bg-gray-100"
                         />
-                        <span className="font-medium">{variante.productos_catalogo.nombre}</span>
+                        <span className="font-medium">{catalogo.nombre}</span>
                       </div>
                     </TableCell>
                     <TableCell className="text-center">{item.cantidad}</TableCell>
@@ -183,9 +202,17 @@ export default function DetallePedidoClientePage() {
             <TableFooter>
                 <TableRow><TableCell colSpan={2} className="text-right">Subtotal</TableCell><TableCell className="text-right">{formatCurrency(subtotal)}</TableCell></TableRow>
                 <TableRow><TableCell colSpan={2} className="text-right">Impuestos (IGIC)</TableCell><TableCell className="text-right">{formatCurrency(totalImpuestos)}</TableCell></TableRow>
+                {/* =====> INICIO DE LA CORRECCIÓN <===== */}
                 {order.monto_descuento && order.monto_descuento > 0 && (
-                    <TableRow className="text-green-600"><TableCell colSpan={2} className="text-right font-medium">Descuento</TableCell><TableCell className="text-right font-medium">-{formatCurrency(order.monto_descuento)}</TableCell></TableRow>
+                    <TableRow className="text-green-600">
+                        <TableCell colSpan={2} className="text-right font-medium">
+                            Descuento ({order.codigo_descuento || 'N/A'})
+                            {order.tipo_descuento === 'porcentaje' && ` - ${order.valor_descuento}%`}
+                        </TableCell>
+                        <TableCell className="text-right font-medium">-{formatCurrency(order.monto_descuento)}</TableCell>
+                    </TableRow>
                 )}
+                {/* =====> FIN DE LA CORRECCIÓN <===== */}
                 <TableRow className="font-bold text-lg"><TableCell colSpan={2} className="text-right">Total Pagado</TableCell><TableCell className="text-right">{formatCurrency(order.total)}</TableCell></TableRow>
             </TableFooter>
           </Table>

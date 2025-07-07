@@ -1,7 +1,7 @@
 // src/app/dashboard/facturacion/[facturaId]/page.tsx
 "use client";
 
-import React, { useState, useTransition, useEffect } from 'react';
+import React, { useState, useTransition, useEffect, useCallback } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
@@ -23,8 +23,8 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger
 } from "@/components/ui/alert-dialog";
-import { ChevronLeft, Printer, DollarSignIcon, Edit3Icon, Trash2Icon, XCircle, AlertTriangle, InfoIcon, Edit2Icon } from 'lucide-react';
-import { format, parseISO, isBefore, isSameDay } from 'date-fns';
+import { ChevronLeft, Printer, DollarSignIcon, Edit3Icon, Trash2Icon, XCircle, AlertTriangle, InfoIcon, Edit2Icon, PercentIcon } from 'lucide-react';
+import { format, parseISO, isBefore } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import PrintButton from './PrintButton';
@@ -68,9 +68,7 @@ export default function DetalleFacturaPage() {
 
   const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState<string | null>(null);
-  const [itemsError, setItemsError] = useState<string | null>(null);
-  const [pagosError, setPagosError] = useState<string | null>(null);
-
+  
   const [isProcessingAction, startActionTransition] = useTransition();
   const [actionFeedback, setActionFeedback] = useState<{type: 'success' | 'error', message: string} | null>(null);
 
@@ -78,8 +76,7 @@ export default function DetalleFacturaPage() {
   const [isEditarPagoModalOpen, setIsEditarPagoModalOpen] = useState(false);
   const [pagoSeleccionadoParaEditar, setPagoSeleccionadoParaEditar] = useState<PagoFacturaFromDB | null>(null);
 
-
-  const fetchData = async (showLoading = true) => {
+  const fetchData = useCallback(async (showLoading = true) => {
     if (!facturaId || facturaId.length !== 36) {
       setPageError("ID de factura inválido o no proporcionado.");
       if(showLoading) setLoading(false);
@@ -89,12 +86,18 @@ export default function DetalleFacturaPage() {
     const supabase = createClientComponentClient();
     if(showLoading) setLoading(true);
     setPageError(null);
-    setItemsError(null);
-    setPagosError(null);
-    // No limpiar actionFeedback aquí para que los mensajes de éxito/error persistan hasta la próxima acción
+
+    // =====> INICIO DE LA CORRECCIÓN <=====
+    // Añadimos los campos del descuento a la consulta principal de la factura
+    const facturaPromise = supabase
+      .from('facturas')
+      .select(`*, propietarios (id, nombre_completo), pacientes (id, nombre)`)
+      .eq('id', facturaId)
+      .single<FacturaHeaderFromDB>();
+    // =====> FIN DE LA CORRECCIÓN <=====
 
     const [facturaResult, itemsResult, pagosResult, datosClinicaResult] = await Promise.allSettled([
-      supabase.from('facturas').select(`*, propietarios (id, nombre_completo), pacientes (id, nombre)`).eq('id', facturaId).single<FacturaHeaderFromDB>(),
+      facturaPromise,
       supabase.from('items_factura').select('*').eq('factura_id', facturaId).order('created_at', { ascending: true }),
       supabase.from('pagos_factura').select('*').eq('factura_id', facturaId).order('fecha_pago', { ascending: true }),
       supabase.from('datos_clinica').select('*').eq('id', true).maybeSingle<ClinicData>()
@@ -108,27 +111,22 @@ export default function DetalleFacturaPage() {
 
     if (itemsResult.status === 'fulfilled') {
       setItems((itemsResult.value.data || []) as ItemFacturaFromDB[]);
-      if (itemsResult.value.error) setItemsError(itemsResult.value.error.message);
-    } else setItemsError("Error crítico al cargar ítems.");
+    }
 
     if (pagosResult.status === 'fulfilled') {
       setPagos((pagosResult.value.data || []) as PagoFacturaFromDB[]);
-      if (pagosResult.value.error) setPagosError(pagosResult.value.error.message);
-    } else setPagosError("Error crítico al cargar pagos.");
+    }
 
     if (datosClinicaResult.status === 'fulfilled' && datosClinicaResult.value.data) {
         setDatosClinica(datosClinicaResult.value.data);
-    } else if (datosClinicaResult.status === 'fulfilled' && datosClinicaResult.value.error) {
-        console.error("Error fetching datos de la clínica:", datosClinicaResult.value.error);
     }
-
-
+    
     if(showLoading) setLoading(false);
-  }
+  }, [facturaId]);
 
   useEffect(() => {
     fetchData();
-  }, [facturaId]);
+  }, [fetchData]);
 
   const handleEliminarBorrador = async () => {
     if (!factura) return;
@@ -176,12 +174,10 @@ export default function DetalleFacturaPage() {
     setIsEditarPagoModalOpen(true);
   };
 
-
   const totalPagado = pagos.reduce((sum, pago) => sum + pago.monto_pagado, 0);
   const saldoPendiente = factura ? factura.total - totalPagado : 0;
   const puedeRegistrarPago = factura && factura.estado !== 'Pagada' && factura.estado !== 'Anulada' && factura.estado !== 'Borrador' && saldoPendiente > 0.001;
   const puedeGestionarPagos = factura && factura.estado !== 'Anulada';
-
 
   if (loading) {
     return <div className="container mx-auto py-10 text-center">Cargando datos de la factura...</div>;
@@ -229,14 +225,13 @@ export default function DetalleFacturaPage() {
                     <DialogTitle>Registrar Pago para Factura {factura.numero_factura}</DialogTitle>
                     <DialogDescription>Introduce los detalles del pago recibido.</DialogDescription>
                   </DialogHeader>
-                  {/* El componente RegistrarPagoForm se renderiza aquí */}
                   <RegistrarPagoForm
                     facturaId={factura.id}
                     totalFactura={factura.total}
                     saldoPendienteActual={saldoPendiente}
                     onPagoRegistrado={() => {
                       setIsRegistrarPagoModalOpen(false);
-                      fetchData(false); // Refrescar datos sin loader
+                      fetchData(false);
                       setActionFeedback({type: 'success', message: "Pago registrado exitosamente."});
                     }}
                     onCancel={() => setIsRegistrarPagoModalOpen(false)}
@@ -337,9 +332,8 @@ export default function DetalleFacturaPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {itemsError && <TableRow><TableCell colSpan={6} className="text-center text-red-500 py-4">Error al cargar los ítems.</TableCell></TableRow>}
-              {!itemsError && items.length === 0 && <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-10">Esta factura no tiene ítems.</TableCell></TableRow>}
-              {!itemsError && items.map(item => (
+              {items.length === 0 && <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-10">Esta factura no tiene ítems.</TableCell></TableRow>}
+              {items.map(item => (
                 <TableRow key={item.id} className="print:text-xs">
                   <TableCell className="py-2 print:py-1">{item.descripcion}</TableCell>
                   <TableCell className="text-center py-2 print:py-1">{item.cantidad}</TableCell>
@@ -370,6 +364,20 @@ export default function DetalleFacturaPage() {
               </div>
             )}
             <div className="flex justify-between"><span>Suma Total de Impuestos (IGIC):</span><span>{formatCurrency(factura.monto_impuesto)}</span></div>
+            
+            {/* =====> INICIO DE LA CORRECCIÓN <===== */}
+            {factura.monto_descuento && factura.monto_descuento > 0 && (
+              <div className="flex justify-between text-green-600">
+                <span className="font-medium flex items-center gap-1">
+                  <PercentIcon className="h-4 w-4" />
+                  Descuento ({factura.codigo_descuento || 'N/A'})
+                  {factura.tipo_descuento === 'porcentaje' && ` - ${factura.valor_descuento}%`}
+                </span>
+                <span className="font-medium">-{formatCurrency(factura.monto_descuento)}</span>
+              </div>
+            )}
+            {/* =====> FIN DE LA CORRECCIÓN <===== */}
+
             <Separator className="my-1 print:border-gray-400"/>
             <div className="flex justify-between font-bold text-base md:text-lg print:text-sm"><span>TOTAL FACTURA:</span><span>{formatCurrency(factura.total)}</span></div>
             {factura.estado !== 'Pagada' && factura.estado !== 'Anulada' && saldoPendiente >= 0.001 && (
@@ -401,8 +409,7 @@ export default function DetalleFacturaPage() {
 
       <section className="mt-8 print:hidden" id="invoice-payments">
         <h2 className="text-xl font-semibold mb-3">Pagos Registrados</h2>
-        {pagosError && <p className="text-sm text-red-500">Error al cargar los pagos: {pagosError}</p>}
-        {!pagosError && pagos.length === 0 ? (
+        {pagos.length === 0 ? (
           <p className="text-muted-foreground text-sm">Aún no se han registrado pagos para esta factura.</p>
         ) : (
           <ul className="space-y-3">
@@ -472,7 +479,6 @@ export default function DetalleFacturaPage() {
         )}
       </section>
 
-      {/* MODAL PARA EDITAR PAGO */}
       {pagoSeleccionadoParaEditar && factura && (
         <Dialog open={isEditarPagoModalOpen} onOpenChange={setIsEditarPagoModalOpen}>
           <DialogContent className="sm:max-w-lg">

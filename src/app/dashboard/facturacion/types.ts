@@ -73,6 +73,8 @@ export type PacienteInfoDetalle = {
   nombre: string | null;
 };
 
+// =====> INICIO DE LA CORRECCIÓN <=====
+// Se añaden los campos que faltaban para el descuento.
 export type FacturaHeaderFromDB = {
   id: string;
   numero_factura: string;
@@ -93,7 +95,10 @@ export type FacturaHeaderFromDB = {
   updated_at: string | null;
   monto_descuento: number | null;
   codigo_descuento: string | null;
+  tipo_descuento: 'porcentaje' | 'fijo' | null; // <-- AÑADIDO
+  valor_descuento: number | null; // <-- AÑADIDO
 };
+// =====> FIN DE LA CORRECCIÓN <=====
 
 export const metodosDePagoOpciones = [
   { value: "Efectivo", label: "Efectivo" },
@@ -153,7 +158,7 @@ export type FacturaItemFormData = {
 export type FacturaHeaderFormData = {
   propietario_id: string;
   paciente_id?: string;
-  numero_factura?: string; // <-- CORRECCIÓN: Hecho opcional
+  numero_factura?: string;
   fecha_emision: string;
   fecha_vencimiento?: string;
   estado: EstadoFacturaPagoValue;

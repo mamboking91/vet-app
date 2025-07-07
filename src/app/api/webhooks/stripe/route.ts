@@ -60,8 +60,15 @@ export async function POST(req: Request) {
 
         const direccionEnvio: DireccionEnvio = JSON.parse(metadata.direccion_envio_json);
         const itemsPedido: CartItemMetadata[] = JSON.parse(metadata.items_pedido_json);
+        
+        // =====> INICIO DE LA CORRECCIÓN <=====
+        // Leemos TODOS los detalles del descuento directamente desde los metadatos.
         const montoDescuento = (session.total_details?.amount_discount || 0) / 100;
-        const codigoDescuento = session.total_details?.breakdown?.discounts[0]?.discount?.coupon?.name || null;
+        const codigoDescuento = metadata.codigo_descuento || null;
+        const tipoDescuento = metadata.tipo_descuento || null;
+        // Convertimos el valor del descuento de string a número.
+        const valorDescuento = metadata.valor_descuento ? Number(metadata.valor_descuento) : null;
+        // =====> FIN DE LA CORRECCIÓN <=====
 
         const rpcParams = {
             in_propietario_id: metadata.customer_id || null,
@@ -74,6 +81,9 @@ export async function POST(req: Request) {
             in_items: itemsPedido,
             in_monto_descuento: montoDescuento,
             in_codigo_descuento: codigoDescuento,
+            // Pasamos los nuevos parámetros a la función RPC
+            in_tipo_descuento: tipoDescuento,
+            in_valor_descuento: valorDescuento,
         };
 
         const { data: newOrderId, error: rpcError } = await supabaseAdmin
@@ -85,6 +95,9 @@ export async function POST(req: Request) {
         if (!newOrderId) {
             throw new Error("La función RPC no devolvió un ID de pedido válido.");
         }
+
+        // Aquí iría la lógica para enviar el email de confirmación si lo deseas
+        // ...
 
     } catch (e: any) {
         console.error(`[Stripe Webhook] Error crítico al procesar la sesión ${session.id}:`, e.message);
