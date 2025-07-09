@@ -155,7 +155,9 @@ async function FeaturedProductsBlock({ contenido }: { contenido: ContenidoProduc
     <section className="py-16 bg-gray-50 dark:bg-slate-900">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
         <h2 className="text-3xl font-bold text-center text-gray-800 dark:text-white mb-10">{contenido.titulo}</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+        {/* --- INICIO DE LA CORRECCIÓN --- */}
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-8">
+        {/* --- FIN DE LA CORRECCIÓN --- */}
           {uniqueProducts.slice(0, 4).map(product => (
             <ProductCard key={product.producto_padre_id} product={product} fallbackImageUrl={logoFallbackUrl} />
           ))}

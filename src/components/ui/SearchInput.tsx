@@ -1,11 +1,11 @@
-// src/app/components/SearchInput.tsx
+// src/components/ui/SearchInput.tsx
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
-import { Input } from '@/components/ui/input'; // Asume que @/components apunta a src/components
-import { Button } from '@/components/ui/button'; // Asume que @/components apunta a src/components
-import { Search as SearchIcon } from 'lucide-react'; // Renombrado para evitar colisión si Search es un componente
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Search as SearchIcon, X } from 'lucide-react';
 
 interface SearchInputProps {
   placeholder?: string;
@@ -20,37 +20,47 @@ export default function SearchInput({
 }: SearchInputProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const currentSearchParams = useSearchParams(); // Renombrado para claridad
+  const searchParams = useSearchParams();
 
   const [searchTerm, setSearchTerm] = useState(initialQuery);
 
-  useEffect(() => {
-    setSearchTerm(initialQuery || ''); // Asegurar que sea string
-  }, [initialQuery]);
-
-  const handleSearchSubmit = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const params = new URLSearchParams(currentSearchParams.toString());
-    if (searchTerm.trim()) {
-      params.set(queryParamName, searchTerm.trim());
+  const performSearch = useCallback((term: string) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (term) {
+      params.set(queryParamName, term);
     } else {
       params.delete(queryParamName);
     }
-    
-    const newUrl = `${pathname}${params.toString() ? `?${params.toString()}` : ''}`;
-    router.push(newUrl);
-  };
+    // Usamos { scroll: false } para que la página no salte al inicio en cada búsqueda
+    router.push(`${pathname}?${params.toString()}`, { scroll: false });
+  }, [searchParams, queryParamName, pathname, router]);
+
+  // --- INICIO DE LA CORRECCIÓN: Lógica de debounce integrada ---
+  useEffect(() => {
+    // Sincroniza el estado del input si la URL cambia (ej. al usar el botón "Atrás")
+    setSearchTerm(searchParams.get(queryParamName) || '');
+  }, [searchParams, queryParamName]);
+
+  useEffect(() => {
+    // Establece un temporizador para ejecutar la búsqueda
+    const timerId = setTimeout(() => {
+      // Solo busca si el término actual es diferente al de la URL
+      if (searchTerm !== (searchParams.get(queryParamName) || '')) {
+        performSearch(searchTerm);
+      }
+    }, 300); // Espera 300ms después de que el usuario deja de teclear
+
+    // Limpia el temporizador si el usuario sigue escribiendo
+    return () => clearTimeout(timerId);
+  }, [searchTerm, performSearch, searchParams, queryParamName]);
+  // --- FIN DE LA CORRECCIÓN ---
 
   const clearSearch = () => {
     setSearchTerm('');
-    const params = new URLSearchParams(currentSearchParams.toString());
-    params.delete(queryParamName);
-    const clearUrl = `${pathname}${params.toString() ? `?${params.toString()}` : ''}`;
-    router.push(clearUrl);
   };
 
   return (
-    <form onSubmit={handleSearchSubmit} className="flex items-center gap-2 mb-6 w-full max-w-lg">
+    <div className="flex items-center gap-2 mb-6 w-full max-w-lg">
       <div className="relative flex-grow">
         <SearchIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input
@@ -58,20 +68,21 @@ export default function SearchInput({
           placeholder={placeholder}
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          className="pl-10 w-full" 
+          className="pl-10 pr-10 w-full"
         />
+        {searchTerm && (
+          <Button 
+            type="button" 
+            variant="ghost" 
+            size="icon"
+            className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 rounded-full"
+            onClick={clearSearch}
+            title="Limpiar búsqueda"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        )}
       </div>
-      <Button type="submit">Buscar</Button>
-      {/* Mostrar botón para limpiar solo si hay un término de búsqueda activo en la URL o en el input */}
-      {(currentSearchParams.get(queryParamName) || searchTerm) && (
-        <Button 
-          type="button" 
-          variant="outline" 
-          onClick={clearSearch}
-        >
-          Limpiar
-        </Button>
-      )}
-    </form>
+    </div>
   );
 }

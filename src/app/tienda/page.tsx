@@ -18,8 +18,6 @@ function ProductCard({ product }: { product: any }) {
     <Link href={`/tienda/${product.producto_padre_id}`} className="group">
       <Card className="w-full overflow-hidden transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
         <CardContent className="p-0">
-          {/* --- INICIO DE LA CORRECCIÓN --- */}
-          {/* Se elimina el fondo gris y el padding del contenedor de la imagen */}
           <div className="aspect-square overflow-hidden flex items-center justify-center">
             <Image
               src={product.imagen_producto_principal || '/placeholder.svg'}
@@ -29,7 +27,6 @@ function ProductCard({ product }: { product: any }) {
               className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
             />
           </div>
-          {/* --- FIN DE LA CORRECCIÓN --- */}
           <div className="p-4 border-t">
             <h3 className="text-md font-semibold text-gray-800 truncate" title={nombreProducto}>
               {nombreProducto}
@@ -73,7 +70,9 @@ export default async function TiendaPage({ searchParams }: TiendaPageProps) {
   }
 
   if (categoryFilter) {
-    query = query.contains('categorias_tienda', [{ nombre: categoryFilter }]);
+    // --- CORRECCIÓN AQUÍ ---
+    // Se asegura que la consulta para el filtro de JSONB sea un string.
+    query = query.contains('categorias_tienda', JSON.stringify([{ nombre: categoryFilter }]));
   }
 
   const { data: allVariants, error: productsError } = await query;
@@ -110,7 +109,7 @@ export default async function TiendaPage({ searchParams }: TiendaPageProps) {
       <FiltrosTienda categorias={uniqueCategories} />
 
       {uniqueProducts && uniqueProducts.length > 0 ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8 mt-10">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-8 mt-10">
           {uniqueProducts.map(product => (
             <ProductCard 
               key={(product as any).id}
