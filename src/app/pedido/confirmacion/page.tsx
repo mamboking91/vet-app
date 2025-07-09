@@ -8,8 +8,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { CheckCircle, Home, PercentIcon } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import ProductImage from '@/components/ui/ProductImage';
+import { Separator } from '@/components/ui/separator';
 
-// Se añaden los campos de descuento
 type PedidoConfirmacion = {
   id: string;
   total: number;
@@ -25,10 +25,6 @@ type PedidoConfirmacion = {
     codigo_postal: string;
   };
   email_cliente: string;
-  factura: {
-    subtotal: number;
-    monto_impuesto: number;
-  } | null;
   items_pedido: {
     cantidad: number;
     precio_unitario: number;
@@ -36,6 +32,7 @@ type PedidoConfirmacion = {
       productos_catalogo: {
           nombre: string;
           imagenes: { url: string }[] | null;
+          porcentaje_impuesto: number;
       } | null;
     } | null;
   }[];
@@ -48,24 +45,20 @@ async function findOrderWithRetry(sessionId: string, retries = 5, delay = 1500):
   );
 
   for (let i = 0; i < retries; i++) {
-    // =====> INICIO DE LA CORRECCIÓN <=====
-    // Se añaden los campos del descuento a la consulta
     const { data: orderData, error } = await supabaseAdmin
       .from('pedidos')
       .select(`
         id, total, monto_descuento, codigo_descuento, tipo_descuento, valor_descuento,
         direccion_envio, email_cliente,
-        factura:factura_id ( subtotal, monto_impuesto ),
         items_pedido (
           cantidad, precio_unitario,
           producto_variantes (
-            productos_catalogo ( nombre, imagenes )
+            productos_catalogo ( nombre, imagenes, porcentaje_impuesto )
           )
         )
       `)
       .eq('checkout_reference', sessionId)
       .single<PedidoConfirmacion>();
-    // =====> FIN DE LA CORRECCIÓN <=====
 
     if (orderData && orderData.items_pedido.length > 0) {
       return orderData;
@@ -92,10 +85,15 @@ export default async function ConfirmationPage({ searchParams }: { searchParams:
     notFound();
   }
 
-  const { direccion_envio, factura, total, monto_descuento, codigo_descuento, tipo_descuento, valor_descuento, email_cliente, items_pedido } = order;
+  const { direccion_envio, total, monto_descuento, codigo_descuento, tipo_descuento, valor_descuento, email_cliente, items_pedido } = order;
   const nombreCompleto = direccion_envio.nombre_completo || 'Cliente';
-  const subtotal = factura?.subtotal ?? items_pedido.reduce((acc, item) => acc + (item.precio_unitario * item.cantidad), 0);
-  const totalImpuestos = factura?.monto_impuesto ?? (total - subtotal + (monto_descuento || 0));
+  
+  const subtotal = items_pedido.reduce((acc, item) => acc + (item.precio_unitario * item.cantidad), 0);
+  const totalImpuestos = items_pedido.reduce((acc, item) => {
+    const base = item.precio_unitario * item.cantidad;
+    const tasa = item.producto_variantes?.productos_catalogo?.porcentaje_impuesto ?? 0;
+    return acc + (base * (tasa / 100));
+  }, 0);
 
   return (
     <div className="bg-gray-50 min-h-screen py-12 px-4 sm:px-6 lg:px-8">
@@ -116,7 +114,7 @@ export default async function ConfirmationPage({ searchParams }: { searchParams:
                 const catalogo = variante?.productos_catalogo;
                 if (!variante || !catalogo) return null;
                 
-                const totalItem = item.precio_unitario * item.cantidad;
+                const totalItem = item.precio_unitario * item.cantidad * (1 + (catalogo.porcentaje_impuesto / 100));
                 const imagenUrl = catalogo.imagenes?.[0]?.url || 'https://placehold.co/64x64/e2e8f0/e2e8f0?text=G';
 
                 return (
@@ -142,35 +140,38 @@ export default async function ConfirmationPage({ searchParams }: { searchParams:
               })}
             </div>
 
+            {/* =====> INICIO DE LA CORRECCIÓN: Resumen financiero reestructurado <===== */}
             <div className="border-t border-gray-200 mt-4 pt-4 space-y-2 text-sm">
                <div className="flex justify-between">
-                <span className="text-gray-600">Subtotal:</span>
+                <span className="text-gray-600">Subtotal</span>
                 <span className="font-medium text-gray-900">{formatCurrency(subtotal)}</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Impuestos (IGIC):</span>
-                <span className="font-medium text-gray-900">{formatCurrency(totalImpuestos)}</span>
-              </div>
               
-              {/* =====> INICIO DE LA CORRECCIÓN <===== */}
-              {monto_descuento && monto_descuento > 0 && (
+              {typeof monto_descuento === 'number' && monto_descuento > 0 && (
                  <div className="flex justify-between text-green-600">
-                    <span className="font-medium">
+                    <span className="font-medium flex items-center gap-1">
+                      <PercentIcon className="h-4 w-4" />
                       Descuento ({codigo_descuento})
-                      {tipo_descuento === 'porcentaje' && ` - ${valor_descuento}%`}
                     </span>
                     <span className="font-medium">
                       -{formatCurrency(monto_descuento)}
                     </span>
                   </div>
               )}
-              {/* =====> FIN DE LA CORRECCIÓN <===== */}
 
-              <div className="flex justify-between font-bold text-base pt-2 border-t mt-2">
-                <span>Total Pagado:</span>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Impuestos (IGIC)</span>
+                <span className="font-medium text-gray-900">{formatCurrency(totalImpuestos)}</span>
+              </div>
+
+              <Separator className="my-2" />
+
+              <div className="flex justify-between font-bold text-base">
+                <span>Total Pagado</span>
                 <span>{formatCurrency(total)}</span>
               </div>
             </div>
+            {/* =====> FIN DE LA CORRECCIÓN <===== */}
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8 border-t pt-6">
                 <div>

@@ -87,14 +87,11 @@ export default function DetalleFacturaPage() {
     if(showLoading) setLoading(true);
     setPageError(null);
 
-    // =====> INICIO DE LA CORRECCIÓN <=====
-    // Añadimos los campos del descuento a la consulta principal de la factura
     const facturaPromise = supabase
       .from('facturas')
       .select(`*, propietarios (id, nombre_completo), pacientes (id, nombre)`)
       .eq('id', facturaId)
       .single<FacturaHeaderFromDB>();
-    // =====> FIN DE LA CORRECCIÓN <=====
 
     const [facturaResult, itemsResult, pagosResult, datosClinicaResult] = await Promise.allSettled([
       facturaPromise,
@@ -348,10 +345,15 @@ export default function DetalleFacturaPage() {
         </div>
       </section>
 
+      {/* =====> INICIO DE LA CORRECCIÓN: Resumen financiero reestructurado <===== */}
       <section className="mb-8 print:mb-6" id="invoice-summary">
         <div className="mt-6 flex justify-end">
           <div className="w-full max-w-sm space-y-1 text-sm print:text-xs">
-            <div className="flex justify-between"><span>Suma de Bases Imponibles:</span><span>{formatCurrency(factura.subtotal)}</span></div>
+            <div className="flex justify-between">
+                <span className="text-muted-foreground">Suma de Bases Imponibles:</span>
+                <span>{formatCurrency(factura.subtotal)}</span>
+            </div>
+            
             {factura.desglose_impuestos && Object.keys(factura.desglose_impuestos).length > 0 && (
               <div className="pl-4 border-l-2 border-gray-300 dark:border-gray-700 ml-2 my-1 py-1">
                 <p className="text-xs font-medium text-muted-foreground mb-0.5">Desglose IGIC:</p>
@@ -363,23 +365,26 @@ export default function DetalleFacturaPage() {
                 ))}
               </div>
             )}
-            <div className="flex justify-between"><span>Suma Total de Impuestos (IGIC):</span><span>{formatCurrency(factura.monto_impuesto)}</span></div>
+            <div className="flex justify-between">
+                <span className="text-muted-foreground">Suma Total de Impuestos (IGIC):</span>
+                <span>{formatCurrency(factura.monto_impuesto)}</span>
+            </div>
             
-            {/* =====> INICIO DE LA CORRECCIÓN <===== */}
-            {factura.monto_descuento && factura.monto_descuento > 0 && (
+            {typeof factura.monto_descuento === 'number' && factura.monto_descuento > 0 && (
               <div className="flex justify-between text-green-600">
                 <span className="font-medium flex items-center gap-1">
                   <PercentIcon className="h-4 w-4" />
                   Descuento ({factura.codigo_descuento || 'N/A'})
-                  {factura.tipo_descuento === 'porcentaje' && ` - ${factura.valor_descuento}%`}
                 </span>
                 <span className="font-medium">-{formatCurrency(factura.monto_descuento)}</span>
               </div>
             )}
-            {/* =====> FIN DE LA CORRECCIÓN <===== */}
 
             <Separator className="my-1 print:border-gray-400"/>
-            <div className="flex justify-between font-bold text-base md:text-lg print:text-sm"><span>TOTAL FACTURA:</span><span>{formatCurrency(factura.total)}</span></div>
+            <div className="flex justify-between font-bold text-base md:text-lg print:text-sm">
+                <span>TOTAL FACTURA:</span>
+                <span>{formatCurrency(factura.total)}</span>
+            </div>
             {factura.estado !== 'Pagada' && factura.estado !== 'Anulada' && saldoPendiente >= 0.001 && (
                 <div className="flex justify-between text-orange-600 dark:text-orange-400 font-semibold pt-1">
                     <span>SALDO PENDIENTE:</span>
@@ -395,6 +400,7 @@ export default function DetalleFacturaPage() {
           </div>
         </div>
       </section>
+      {/* =====> FIN DE LA CORRECCIÓN <===== */}
 
       {(factura.notas_cliente || factura.notas_internas) && (
         <section className="mt-8 space-y-4 text-sm print:mt-4" id="invoice-notes">
