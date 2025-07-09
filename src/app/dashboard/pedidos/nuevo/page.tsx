@@ -1,52 +1,94 @@
 // app/dashboard/pedidos/nuevo/page.tsx
+
 import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { ChevronLeft } from 'lucide-react';
+import { AlertTriangle, ChevronLeft } from 'lucide-react';
 import PedidoManualForm from './PedidoManualForm';
-import type { Propietario } from '@/app/dashboard/propietarios/types'; // Importamos el tipo Propietario completo
+import type { Propietario } from '@/app/dashboard/propietarios/types';
 
-// Forzamos el renderizado dinámico para asegurar que los datos siempre estén actualizados.
-export const dynamic = 'force-dynamic';
+// Tipos de datos que se pasarán al formulario
+type ProductoParaSelector = {
+  id: string; // ID de la variante
+  nombre: string; // Nombre combinado (Producto + Variante)
+  precio_venta: number | null;
+  porcentaje_impuesto: number;
+};
 
-export default async function NuevoPedidoPage() {
-  const cookieStore = cookies();
-  const supabase = createServerComponentClient({ cookies: () => cookieStore });
+// Función para formatear los atributos de una variante en un string legible
+const formatAtributos = (atributos: any): string => {
+    if (!atributos || typeof atributos !== 'object' || Object.keys(atributos).length === 0) {
+        return 'Variante';
+    }
+    return Object.entries(atributos)
+        .map(([key, value]) => `${value}`)
+        .join(', ');
+};
 
-  // Obtenemos los datos necesarios para los selectores del formulario en paralelo.
+
+export default async function NuevoPedidoManualPage() {
+  const supabase = createServerComponentClient({ cookies: () => cookies() });
+
   const [clientesResult, productosResult] = await Promise.all([
-    // AHORA SELECCIONAMOS TODOS LOS CAMPOS NECESARIOS DEL PROPIETARIO para el autocompletado.
     supabase
       .from('propietarios')
-      .select('id, nombre_completo, email, telefono, direccion, localidad, provincia, codigo_postal')
+      .select('*')
       .order('nombre_completo', { ascending: true }),
-    // Seleccionamos solo los productos que están marcados para venderse en la tienda.
+    
+    // =====> INICIO DE LA CORRECCIÓN 1: Usar la relación correcta 'productos_catalogo' <=====
     supabase
-      .from('productos_inventario')
-      .select('id, nombre, precio_venta, porcentaje_impuesto')
-      .eq('en_tienda', true)
-      .order('nombre', { ascending: true })
+      .from('producto_variantes')
+      .select(`
+        id,
+        precio_venta,
+        atributos,
+        productos_catalogo (
+          nombre,
+          porcentaje_impuesto
+        )
+      `)
+      .order('created_at', { ascending: false })
+    // =====> FIN DE LA CORRECCIÓN 1 <=====
   ]);
 
-  // Aseguramos que los datos de clientes coincidan con el tipo Propietario completo.
-  // Si la consulta falla, pasamos un array vacío para evitar errores.
-  const clientes = (clientesResult.data || []) as Propietario[];
-  const productos = productosResult.data || [];
+  if (clientesResult.error || productosResult.error) {
+    return (
+      <div className="container mx-auto py-10 text-center">
+        <AlertTriangle className="mx-auto h-12 w-12 text-destructive mb-4" />
+        <h2 className="text-xl font-semibold">Error al Cargar Datos</h2>
+        <p className="text-muted-foreground">
+          No se pudieron cargar los clientes o productos. Error: {clientesResult.error?.message || productosResult.error?.message}
+        </p>
+        <Button asChild variant="outline" className="mt-4">
+          <Link href="/dashboard/pedidos">Volver a Pedidos</Link>
+        </Button>
+      </div>
+    );
+  }
+
+  const clientes: Propietario[] = clientesResult.data || [];
   
+  const productos: ProductoParaSelector[] = (productosResult.data || []).map((variante: any) => {
+    const nombreProducto = variante.productos_catalogo?.nombre || 'Producto sin nombre';
+    const nombreVariante = formatAtributos(variante.atributos);
+    return {
+      id: variante.id,
+      nombre: `${nombreProducto} (${nombreVariante})`,
+      precio_venta: variante.precio_venta,
+      porcentaje_impuesto: variante.productos_catalogo?.porcentaje_impuesto || 0,
+    }
+  });
+
   return (
-    <div>
-      <div className="flex items-center gap-4 mb-6">
+    <div className="container mx-auto py-8 px-4 md:px-6">
+      <div className="flex items-center gap-4 mb-8">
         <Button variant="outline" size="icon" asChild>
-          <Link href="/dashboard/pedidos">
-            <ChevronLeft className="h-4 w-4" />
-          </Link>
+          <Link href="/dashboard/pedidos"><ChevronLeft className="h-4 w-4" /></Link>
         </Button>
         <h1 className="text-3xl font-bold">Crear Pedido Manual</h1>
       </div>
       
-      {/* Pasamos los datos completos de los clientes y productos al formulario. */}
-      {/* El formulario (PedidoManualForm) será un Componente de Cliente para manejar la interactividad. */}
       <PedidoManualForm clientes={clientes} productos={productos} />
     </div>
   );

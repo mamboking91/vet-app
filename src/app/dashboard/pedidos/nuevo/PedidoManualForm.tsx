@@ -13,8 +13,8 @@ import { X, User, AlertCircle, Loader2, Package } from 'lucide-react';
 import { toast } from 'sonner';
 import { createManualOrder } from '@/app/dashboard/pedidos/actions';
 import type { Propietario } from '@/app/dashboard/propietarios/types';
+import { formatCurrency } from '@/lib/utils'
 
-// La prop ahora espera un array de objetos Propietario completos
 interface PedidoManualFormProps {
   clientes: Propietario[];
   productos: ProductoParaSelector[];
@@ -37,7 +37,6 @@ type ItemPedidoForm = {
   subtotal: number; 
 };
 
-
 export default function PedidoManualForm({ clientes, productos }: PedidoManualFormProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -45,23 +44,20 @@ export default function PedidoManualForm({ clientes, productos }: PedidoManualFo
   const [clienteSeleccionadoId, setClienteSeleccionadoId] = useState<string>('');
   const [items, setItems] = useState<ItemPedidoForm[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [productSelectorKey, setProductSelectorKey] = useState(crypto.randomUUID());
 
   const [manualClient, setManualClient] = useState({
       nombre_completo: '', email: '', direccion: '', localidad: '', provincia: 'Santa Cruz de Tenerife', codigo_postal: '', telefono: ''
   });
 
   const handleSelectCliente = (clienteId: string) => {
+    setClienteSeleccionadoId(clienteId);
     if (!clienteId) {
-        setClienteSeleccionadoId('');
-        // Limpiamos el formulario si se deselecciona un cliente
         setManualClient({ nombre_completo: '', email: '', direccion: '', localidad: '', provincia: 'Santa Cruz de Tenerife', codigo_postal: '', telefono: '' });
         return;
     }
     
-    setClienteSeleccionadoId(clienteId);
     const cliente = clientes.find(c => c.id === clienteId);
-    
-    // **CORRECCIÓN CLAVE: Autocompletamos todos los campos disponibles**
     if (cliente) {
         setManualClient({
             nombre_completo: cliente.nombre_completo || '',
@@ -76,13 +72,13 @@ export default function PedidoManualForm({ clientes, productos }: PedidoManualFo
     }
   };
 
+  // =====> INICIO DE LA CORRECCIÓN 2: Lógica de edición de cliente mejorada <=====
   const handleManualClientChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
       setManualClient(prev => ({ ...prev, [e.target.name]: e.target.value }));
-      if (clienteSeleccionadoId) {
-        setClienteSeleccionadoId('');
-        toast.info("Modo de entrada manual activado. Se creará un nuevo propietario si no existe.");
-      }
+      // Ya no deseleccionamos al cliente. El usuario puede editar los datos
+      // y la lógica de envío decidirá si se crea un cliente nuevo o se usa el existente.
   };
+  // =====> FIN DE LA CORRECCIÓN 2 <=====
 
   const handleAddItem = (producto: ProductoParaSelector) => {
     if (producto.precio_venta === null) {
@@ -91,11 +87,13 @@ export default function PedidoManualForm({ clientes, productos }: PedidoManualFo
     }
     if (items.some(item => item.producto_id === producto.id)) {
       toast.info(`"${producto.nombre}" ya está en el pedido. Puedes ajustar la cantidad.`);
+      setProductSelectorKey(crypto.randomUUID());
       return;
     }
     const precioBase = producto.precio_venta;
     const precioFinal = precioBase * (1 + producto.porcentaje_impuesto / 100);
     setItems(prev => [...prev, { id_temporal: crypto.randomUUID(), producto_id: producto.id, nombre: producto.nombre, cantidad: 1, precio_unitario: precioBase, porcentaje_impuesto: producto.porcentaje_impuesto, subtotal: precioFinal }]);
+    setProductSelectorKey(crypto.randomUUID());
   };
 
   const handleUpdateCantidad = (id_temporal: string, cantidad: number) => {
@@ -191,7 +189,14 @@ export default function PedidoManualForm({ clientes, productos }: PedidoManualFo
              <CardDescription>Busca productos y añádelos al pedido.</CardDescription>
           </CardHeader>
           <CardContent>
-             <Select onValueChange={(productId) => { const producto = productos.find(p => p.id === productId); if (producto) handleAddItem(producto); }}>
+             <Select 
+                key={productSelectorKey}
+                onValueChange={(productId) => { 
+                    if (!productId) return;
+                    const producto = productos.find(p => p.id === productId); 
+                    if (producto) handleAddItem(producto); 
+                }}
+             >
               <SelectTrigger><SelectValue placeholder="Busca un producto..." /></SelectTrigger>
               <SelectContent>{productos.map(producto => (<SelectItem key={producto.id} value={producto.id}>{producto.nombre}</SelectItem>))}</SelectContent>
             </Select>
@@ -207,7 +212,7 @@ export default function PedidoManualForm({ clientes, productos }: PedidoManualFo
             <TableBody>
               {items.length > 0 ? items.map(item => {
                 const precioFinalUnitario = item.precio_unitario * (1 + item.porcentaje_impuesto / 100);
-                return (<TableRow key={item.id_temporal}><TableCell className="font-medium">{item.nombre}</TableCell><TableCell><Input type="number" value={item.cantidad} onChange={(e) => handleUpdateCantidad(item.id_temporal, parseInt(e.target.value) || 1)} className="w-20 text-center" min="1"/></TableCell><TableCell className="text-right">{precioFinalUnitario.toFixed(2)} €</TableCell><TableCell className="text-right font-semibold">{item.subtotal.toFixed(2)} €</TableCell><TableCell><Button variant="ghost" size="icon" onClick={() => handleRemoveItem(item.id_temporal)}><X className="h-4 w-4 text-red-500"/></Button></TableCell></TableRow>)
+                return (<TableRow key={item.id_temporal}><TableCell className="font-medium">{item.nombre}</TableCell><TableCell><Input type="number" value={item.cantidad} onChange={(e) => handleUpdateCantidad(item.id_temporal, parseInt(e.target.value) || 1)} className="w-20 text-center" min="1"/></TableCell><TableCell className="text-right">{formatCurrency(precioFinalUnitario)}</TableCell><TableCell className="text-right font-semibold">{formatCurrency(item.subtotal)}</TableCell><TableCell><Button variant="ghost" size="icon" onClick={() => handleRemoveItem(item.id_temporal)}><X className="h-4 w-4 text-red-500"/></Button></TableCell></TableRow>)
               }) : (<TableRow><TableCell colSpan={5} className="text-center text-gray-500 py-8">Añade productos para empezar.</TableCell></TableRow>)}
             </TableBody>
           </Table>
@@ -218,7 +223,7 @@ export default function PedidoManualForm({ clientes, productos }: PedidoManualFo
          {error && <p className="text-sm text-red-600 flex items-center gap-2"><AlertCircle className="h-4 w-4"/> {error}</p>}
         <div className="text-right">
             <p className="text-gray-600">Total del Pedido:</p>
-            <p className="text-2xl font-bold">{totalPedido.toFixed(2)} €</p>
+            <p className="text-2xl font-bold">{formatCurrency(totalPedido)}</p>
         </div>
         <Button type="submit" size="lg" disabled={isPending || items.length === 0 || (!clienteSeleccionadoId && !manualClient.email)}>
           {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
