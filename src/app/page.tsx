@@ -1,3 +1,4 @@
+// src/app/page.tsx
 import Link from 'next/link';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from '@/components/ui/card';
@@ -9,18 +10,95 @@ import React from 'react';
 import { cn } from '@/lib/utils';
 import { ArrowRight, ShoppingBag, HeartPulse, Stethoscope, Siren, Sparkles, LucideProps } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
+import Image from 'next/image';
 
 const iconMap: { [key: string]: React.FC<LucideProps> } = { Stethoscope, HeartPulse, Siren, Sparkles };
 
 function HeroBlock({ contenido }: { contenido: ContenidoHeroe }) {
+  const isImageBackground = contenido.backgroundType === 'imagen' && contenido.backgroundImageUrl;
+
+  const sectionStyle: React.CSSProperties = {
+    backgroundColor: !isImageBackground ? (contenido.backgroundColor || '#e0f2fe') : 'transparent',
+  };
+
+  const imageStyle: React.CSSProperties = {
+    objectPosition: contenido.backgroundPosition || 'center',
+  };
+
+  const overlayStyle: React.CSSProperties = {
+    backgroundColor: `rgba(0, 0, 0, ${(contenido.overlayOpacity || 60) / 100})`,
+  };
+
+  const btnPrincipalStyle: React.CSSProperties = {
+    backgroundColor: contenido.boton_principal?.backgroundColor || '#2563eb',
+    color: contenido.boton_principal?.textColor || '#ffffff',
+  };
+  const btnSecundarioStyle: React.CSSProperties = {
+    backgroundColor: contenido.boton_secundario?.backgroundColor || '#ffffff',
+    color: contenido.boton_secundario?.textColor || '#1f2937',
+    borderColor: '#e5e7eb'
+  };
+  
+  // --- CORRECCIÓN AQUÍ ---
+  // Se usa una sintaxis que aplica el estilo directamente a los elementos hijos (`h1`, `p`, etc.)
+  // generados por el editor de texto, evitando conflictos con otros estilos.
+  const titleSizeMap: { [key: string]: string } = {
+    '4xl': '[&>*]:text-4xl [&>*]:md:text-4xl',
+    '5xl': '[&>*]:text-5xl [&>*]:md:text-5xl',
+    '6xl': '[&>*]:text-6xl [&>*]:md:text-6xl',
+    '7xl': '[&>*]:text-7xl [&>*]:md:text-7xl',
+  };
+
+  const subtitleSizeMap: { [key: string]: string } = {
+    'lg': '[&>*]:text-lg [&>*]:md:text-lg',
+    'xl': '[&>*]:text-xl [&>*]:md:text-xl',
+    '2xl': '[&>*]:text-2xl [&>*]:md:text-2xl',
+  };
+
+  const tituloSizeClass = titleSizeMap[contenido.tituloFontSize] || '[&>*]:text-6xl [&>*]:md:text-6xl';
+  const subtituloSizeClass = subtitleSizeMap[contenido.subtituloFontSize] || '[&>*]:text-xl [&>*]:md:text-xl';
+  // --- FIN DE LA CORRECCIÓN ---
+
   return (
-    <section className="bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-slate-900 dark:to-blue-950">
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-20 text-center">
-        <h1 className="text-4xl md:text-6xl font-extrabold text-gray-900 dark:text-white">{contenido.titulo || "El mejor cuidado para tu mejor amigo"}</h1>
-        <p className="mt-4 max-w-2xl mx-auto text-lg text-gray-600 dark:text-gray-300">{contenido.subtitulo || "Descubre nuestra selección de productos de alta calidad."}</p>
+    <section className="relative isolate" style={sectionStyle}>
+      {isImageBackground && (
+        <>
+          <Image
+            src={contenido.backgroundImageUrl!}
+            alt="Fondo de la sección Héroe"
+            layout="fill"
+            objectFit="cover"
+            style={imageStyle}
+            className="z-[-2]"
+            priority
+          />
+          <div className="absolute inset-0 z-[-1]" style={overlayStyle}></div>
+        </>
+      )}
+
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-20 text-center flex flex-col items-center">
+        <div
+          className={cn('max-w-none text-white font-extrabold', tituloSizeClass)}
+          dangerouslySetInnerHTML={{ __html: contenido.titulo || "<h1>El mejor cuidado para tu mejor amigo</h1>" }}
+        />
+        <div
+          className={cn('mt-4 max-w-2xl text-gray-200', subtituloSizeClass)}
+          dangerouslySetInnerHTML={{ __html: contenido.subtitulo || "<p>Descubre nuestra selección de productos de alta calidad.</p>" }}
+        />
+
         <div className="mt-8 flex flex-col sm:flex-row justify-center gap-4">
-          <Button asChild size="lg" className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg"><Link href={contenido.boton_principal?.enlace || '/tienda'}>{contenido.boton_principal?.texto || 'Ir a la Tienda'}<ShoppingBag className="ml-2 h-5 w-5" /></Link></Button>
-          <Button asChild size="lg" variant="outline"><Link href={contenido.boton_secundario?.enlace || '/servicios/solicitar-cita'}>{contenido.boton_secundario?.texto || 'Pedir Cita'}<ArrowRight className="ml-2 h-5 w-5" /></Link></Button>
+          <Button asChild size="lg" style={btnPrincipalStyle} className="shadow-lg hover:brightness-110 transition-all">
+            <Link href={contenido.boton_principal?.enlace || '/tienda'}>
+              {contenido.boton_principal?.texto || 'Ir a la Tienda'}
+              <ShoppingBag className="ml-2 h-5 w-5" />
+            </Link>
+          </Button>
+          <Button asChild size="lg" variant="outline" style={btnSecundarioStyle} className="hover:brightness-95 transition-all">
+            <Link href={contenido.boton_secundario?.enlace || '/servicios/solicitar-cita'}>
+              {contenido.boton_secundario?.texto || 'Pedir Cita'}
+              <ArrowRight className="ml-2 h-5 w-5" />
+            </Link>
+          </Button>
         </div>
       </div>
     </section>
@@ -53,7 +131,7 @@ function FeaturesBlock({ contenido }: { contenido: ContenidoCaracteristicas }) {
 
 async function FeaturedProductsBlock({ contenido }: { contenido: ContenidoProductosDestacados }) {
   const supabase = createServerComponentClient({ cookies: () => cookies() });
-  
+
   const { data: clinicData } = await supabase.from('datos_clinica').select('logo_url').single();
   const logoFallbackUrl = clinicData?.logo_url || "https://placehold.co/600x600/e2e8f0/e2e8f0.png?text=Gomera+Mascotas";
 
@@ -112,7 +190,7 @@ function CtaBlock({ contenido }: { contenido: ContenidoCTA }) {
   return (
     <section className="bg-blue-600 text-white">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
-        <div className="prose prose-invert max-w-none text-center" dangerouslySetInnerHTML={{ __html: contenido.titulo }}/>
+        <div className="prose prose-invert max-w-none text-center" dangerouslySetInnerHTML={{ __html: contenido.titulo }} />
         {contenido.boton?.texto && contenido.boton?.enlace && (
           <Button asChild size="lg" variant="secondary" className="mt-8"><Link href={contenido.boton.enlace}>{contenido.boton.texto}</Link></Button>
         )}
@@ -121,40 +199,36 @@ function CtaBlock({ contenido }: { contenido: ContenidoCTA }) {
   );
 }
 
-// --- Componente ProductCard con la corrección aplicada ---
 function ProductCard({ product, fallbackImageUrl }: { product: any, fallbackImageUrl: string }) {
-    const primaryImageUrl = product.imagen_producto_principal || fallbackImageUrl;
-    
-    let precioFinalDisplay = 'Consultar';
-    if (product.precio_venta !== null && product.porcentaje_impuesto !== null) {
-      const precioFinal = Number(product.precio_venta) * (1 + Number(product.porcentaje_impuesto) / 100);
-      precioFinalDisplay = formatCurrency(precioFinal);
-    }
-    
-    return (
-      <Link href={`/tienda/${product.producto_padre_id}`} className="group">
-        <Card className="w-full overflow-hidden transition-all duration-300 hover:shadow-xl hover:-translate-y-1 bg-white dark:bg-slate-800">
-          <CardContent className="p-0">
-            {/* --- INICIO DE LA CORRECCIÓN --- */}
-            {/* Se elimina el fondo gris y el padding del contenedor de la imagen */}
-            <div className="aspect-square overflow-hidden flex items-center justify-center">
-              <ProductImage 
-                src={primaryImageUrl} 
-                alt={product.nombre} 
-                width={600} 
-                height={600} 
-                className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
-              />
-            </div>
-            {/* --- FIN DE LA CORRECCIÓN --- */}
-            <div className="p-4 border-t dark:border-slate-700">
-              <h3 className="text-md font-semibold text-gray-800 dark:text-white truncate">{product.nombre.split(' - ')[0]}</h3>
-              <p className="text-lg font-bold text-blue-600 dark:text-blue-400 mt-2">{precioFinalDisplay}</p>
-            </div>
-          </CardContent>
-        </Card>
-      </Link>
-    );
+  const primaryImageUrl = product.imagen_producto_principal || fallbackImageUrl;
+
+  let precioFinalDisplay = 'Consultar';
+  if (product.precio_venta !== null && product.porcentaje_impuesto !== null) {
+    const precioFinal = Number(product.precio_venta) * (1 + Number(product.porcentaje_impuesto) / 100);
+    precioFinalDisplay = formatCurrency(precioFinal);
+  }
+
+  return (
+    <Link href={`/tienda/${product.producto_padre_id}`} className="group">
+      <Card className="w-full overflow-hidden transition-all duration-300 hover:shadow-xl hover:-translate-y-1 bg-white dark:bg-slate-800">
+        <CardContent className="p-0">
+          <div className="aspect-square overflow-hidden flex items-center justify-center">
+            <ProductImage
+              src={primaryImageUrl}
+              alt={product.nombre}
+              width={600}
+              height={600}
+              className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
+            />
+          </div>
+          <div className="p-4 border-t dark:border-slate-700">
+            <h3 className="text-md font-semibold text-gray-800 dark:text-white truncate">{product.nombre.split(' - ')[0]}</h3>
+            <p className="text-lg font-bold text-blue-600 dark:text-blue-400 mt-2">{precioFinalDisplay}</p>
+          </div>
+        </CardContent>
+      </Card>
+    </Link>
+  );
 }
 
 export default async function HomePage() {
@@ -175,11 +249,23 @@ export default async function HomePage() {
 
   return (
     <div>
-        {(bloques && bloques.length > 0) ? (
-            bloques.map(bloque => renderBlock(bloque))
-        ) : (
-            <HeroBlock contenido={{titulo: "Bienvenido", subtitulo: "Contenido por defecto.", boton_principal: {texto: 'Tienda', enlace: '/tienda'}, boton_secundario: {texto: 'Citas', enlace: '/servicios/solicitar-cita'}}}/>
-        )}
+      {(bloques && bloques.length > 0) ? (
+        bloques.map(bloque => renderBlock(bloque))
+      ) : (
+        <HeroBlock contenido={{
+          titulo: "<h1>Bienvenido a Gomera Mascotas</h1>",
+          subtitulo: "<p>Tu tienda de confianza para el cuidado y bienestar de tus mascotas.</p>",
+          tituloFontSize: '6xl',
+          subtituloFontSize: 'xl',
+          boton_principal: { texto: 'Ir a la Tienda', enlace: '/tienda', backgroundColor: '#2563eb', textColor: '#ffffff' },
+          boton_secundario: { texto: 'Pedir Cita', enlace: '/servicios/solicitar-cita', backgroundColor: '#ffffff', textColor: '#1f2937' },
+          backgroundType: 'color',
+          backgroundColor: '#e0f2fe',
+          backgroundImageUrl: null,
+          backgroundPosition: 'center',
+          overlayOpacity: 60
+        }} />
+      )}
     </div>
   );
 }

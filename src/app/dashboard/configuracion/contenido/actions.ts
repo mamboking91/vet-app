@@ -7,7 +7,6 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import type { ContenidoCaracteristicaItem } from './types';
 
-// Función auxiliar de seguridad
 async function checkAdmin() {
     const cookieStore = cookies();
     const supabase = createServerActionClient({ cookies: () => cookieStore });
@@ -18,17 +17,28 @@ async function checkAdmin() {
     return { supabase, user };
 }
 
-// ... (crearNuevoBloque, actualizarOrdenBloques, eliminarBloque no cambian)
 export async function crearNuevoBloque(pagina: string, tipo_bloque: string, orden: number) {
   try {
     const { supabase } = await checkAdmin();
     let contenidoPorDefecto = {};
     if (tipo_bloque === 'heroe') {
-        contenidoPorDefecto = { titulo: "Nuevo Título", subtitulo: "Nueva descripción.", boton_principal: { texto: "Botón 1", enlace: "/" }, boton_secundario: { texto: "Botón 2", enlace: "/" } };
+        contenidoPorDefecto = { 
+            titulo: "<h1>El mejor cuidado para tu mejor amigo</h1>", 
+            subtitulo: "<p>Descubre nuestra selección de productos de alta calidad.</p>", 
+            tituloFontSize: '6xl',
+            subtituloFontSize: 'xl',
+            boton_principal: { texto: "Ir a la Tienda", enlace: "/tienda", backgroundColor: "#2563eb", textColor: "#ffffff" }, 
+            boton_secundario: { texto: "Pedir Cita", enlace: "/servicios/solicitar-cita", backgroundColor: "#ffffff", textColor: "#1f2937" }, 
+            backgroundType: 'color', 
+            backgroundColor: '#e0f2fe', 
+            backgroundImageUrl: null, 
+            backgroundPosition: 'center', 
+            overlayOpacity: 60 
+        };
     } else if (tipo_bloque === 'caracteristicas') {
         contenidoPorDefecto = { items: [{ id: "feat1", icono: "Sparkles", titulo: "Nueva Característica", descripcion: "<p>Descripción de ejemplo.</p>" }] };
     } else if (tipo_bloque === 'productos_destacados') {
-        contenidoPorDefecto = { titulo: "Nuevos Productos" };
+        contenidoPorDefecto = { titulo: "Nuestros Productos Estrella" };
     } else if (tipo_bloque === 'texto_con_imagen') {
         contenidoPorDefecto = { titulo: "Título de la Sección", texto: "<p>Texto de ejemplo...</p>", imagenUrl: "https://placehold.co/800x600/a3e635/4d7c0f.png?text=Sube+una+imagen", posicionImagen: "derecha", boton: { texto: "Saber Más", enlace: "/" } };
     } else if (tipo_bloque === 'cta') {
@@ -41,6 +51,7 @@ export async function crearNuevoBloque(pagina: string, tipo_bloque: string, orde
     return { success: true, data };
   } catch (e: any) { return { success: false, error: { message: e.message } }; }
 }
+
 export async function actualizarOrdenBloques(idsOrdenados: string[]) {
     try {
         const { supabase } = await checkAdmin();
@@ -52,6 +63,7 @@ export async function actualizarOrdenBloques(idsOrdenados: string[]) {
         return { success: true };
     } catch(e: any) { return { success: false, error: { message: e.message } }; }
 }
+
 export async function eliminarBloque(bloqueId: string) {
     try {
         const { supabase } = await checkAdmin();
@@ -61,32 +73,60 @@ export async function eliminarBloque(bloqueId: string) {
         return { success: true };
     } catch (e: any) { return { success: false, error: { message: e.message } }; }
 }
-export async function actualizarContenidoHeroe(bloqueId: string, formData: FormData) {
+
+export async function actualizarContenidoHeroe(formData: FormData) {
   try {
     const { supabase } = await checkAdmin();
-    const rawData = Object.fromEntries(formData);
-    const validatedFields = z.object({
-        titulo: z.string().min(1, "El título es requerido."),
-        subtitulo: z.string().min(1, "El subtítulo es requerido."),
-        boton_principal_texto: z.string().min(1, "El texto del botón es requerido."),
-        boton_principal_enlace: z.string().min(1, "El enlace del botón es requerido."),
-        boton_secundario_texto: z.string().min(1, "El texto del botón es requerido."),
-        boton_secundario_enlace: z.string().min(1, "El enlace del botón es requerido."),
-    }).safeParse(rawData);
-    if (!validatedFields.success) return { success: false, error: { message: "Datos inválidos.", errors: validatedFields.error.flatten().fieldErrors }};
+    const bloqueId = formData.get('bloqueId') as string;
+    const BUCKET_NAME = 'hero-image';
+
     const contenido = {
-        titulo: validatedFields.data.titulo,
-        subtitulo: validatedFields.data.subtitulo,
-        boton_principal: { texto: validatedFields.data.boton_principal_texto, enlace: validatedFields.data.boton_principal_enlace },
-        boton_secundario: { texto: validatedFields.data.boton_secundario_texto, enlace: validatedFields.data.boton_secundario_enlace },
+        titulo: formData.get('titulo') as string,
+        subtitulo: formData.get('subtitulo') as string,
+        tituloFontSize: formData.get('tituloFontSize') as string,
+        subtituloFontSize: formData.get('subtituloFontSize') as string,
+        boton_principal: JSON.parse(formData.get('boton_principal') as string),
+        boton_secundario: JSON.parse(formData.get('boton_secundario') as string),
+        backgroundType: formData.get('backgroundType') as 'color' | 'imagen',
+        backgroundColor: formData.get('backgroundColor') as string,
+        backgroundImageUrl: formData.get('backgroundImageUrl') === 'null' ? null : formData.get('backgroundImageUrl') as string,
+        backgroundPosition: formData.get('backgroundPosition') as 'center' | 'top' | 'bottom' | 'left' | 'right',
+        overlayOpacity: Number(formData.get('overlayOpacity')) || 60,
     };
-    const { error } = await supabase.from('bloques_pagina').update({ contenido }).eq('id', bloqueId);
-    if (error) throw error;
+
+    let newImageUrl: string | null = contenido.backgroundImageUrl;
+    const imageFile = formData.get('backgroundImageFile') as File | null;
+
+    if (imageFile && imageFile.size > 0) {
+        const fileExt = imageFile.name.split('.').pop() || 'png';
+        const fileName = `hero-${bloqueId}-${Date.now()}.${fileExt}`;
+        const { error: uploadError, data: uploadData } = await supabase.storage.from(BUCKET_NAME).upload(fileName, imageFile);
+        if (uploadError) throw uploadError;
+        newImageUrl = supabase.storage.from(BUCKET_NAME).getPublicUrl(uploadData.path).data.publicUrl;
+
+        const currentUrl = formData.get('backgroundImageUrl') as string;
+        if (currentUrl && !currentUrl.includes('placehold.co') && currentUrl.includes(BUCKET_NAME)) {
+            const oldFileName = currentUrl.split('/').pop();
+            if(oldFileName) await supabase.storage.from(BUCKET_NAME).remove([oldFileName]);
+        }
+    } else if (contenido.backgroundType === 'color' && contenido.backgroundImageUrl) {
+        if (contenido.backgroundImageUrl && !contenido.backgroundImageUrl.includes('placehold.co')) {
+             const oldFileName = contenido.backgroundImageUrl.split('/').pop();
+            if(oldFileName) await supabase.storage.from(BUCKET_NAME).remove([oldFileName]);
+        }
+        newImageUrl = null;
+    }
+
+    const finalContent = { ...contenido, backgroundImageUrl: newImageUrl };
+    const { error: dbError } = await supabase.from('bloques_pagina').update({ contenido: finalContent }).eq('id', bloqueId);
+    if (dbError) throw dbError;
+
     revalidatePath('/');
     revalidatePath('/dashboard/configuracion/contenido');
-    return { success: true, message: "Bloque Héroe actualizado." };
+    return { success: true, message: "Bloque Héroe actualizado.", newImageUrl: newImageUrl !== undefined ? newImageUrl : contenido.backgroundImageUrl };
   } catch (e: any) { return { success: false, error: { message: e.message } }; }
 }
+
 export async function actualizarContenidoCaracteristicas(bloqueId: string, items: ContenidoCaracteristicaItem[]) {
     try {
         const { supabase } = await checkAdmin();
@@ -106,6 +146,7 @@ export async function actualizarContenidoCaracteristicas(bloqueId: string, items
         return { success: true, message: "Bloque de Características actualizado." };
     } catch(e: any) { return { success: false, error: { message: e.message } }; }
 }
+
 export async function actualizarContenidoProductosDestacados(bloqueId: string, formData: FormData) {
     try {
         const { supabase } = await checkAdmin();
@@ -119,7 +160,6 @@ export async function actualizarContenidoProductosDestacados(bloqueId: string, f
     } catch(e: any) { return { success: false, error: { message: e.message } }; }
 }
 
-// --- ACCIÓN ACTUALIZADA para 'texto_con_imagen' con subida de archivos ---
 export async function actualizarContenidoTextoConImagen(formData: FormData) {
     try {
         const { supabase, user } = await checkAdmin();
@@ -130,7 +170,6 @@ export async function actualizarContenidoTextoConImagen(formData: FormData) {
         const imagenFile = formData.get('imagen') as File | null;
         const imagenUrlActual = formData.get('imagenUrlActual') as string;
         
-        // Subir nueva imagen si existe
         if (imagenFile && imagenFile.size > 0) {
             const BUCKET_NAME = 'pagina-assets';
             const fileName = `bloque-${bloqueId}-${Date.now()}.${imagenFile.name.split('.').pop()}`;
@@ -142,7 +181,6 @@ export async function actualizarContenidoTextoConImagen(formData: FormData) {
             if (uploadError) throw new Error(`Error al subir la imagen: ${uploadError.message}`);
             newImageUrl = supabase.storage.from(BUCKET_NAME).getPublicUrl(uploadData.path).data.publicUrl;
 
-            // Borrar imagen antigua si no es una URL de placeholder
             if (imagenUrlActual && !imagenUrlActual.includes('placehold.co')) {
                 const oldFileName = imagenUrlActual.split('/').pop();
                 if (oldFileName) await supabase.storage.from(BUCKET_NAME).remove([oldFileName]);
@@ -153,7 +191,7 @@ export async function actualizarContenidoTextoConImagen(formData: FormData) {
             titulo: formData.get('titulo') as string,
             texto: formData.get('texto') as string,
             posicionImagen: formData.get('posicionImagen') as 'izquierda' | 'derecha',
-            imagenUrl: newImageUrl ?? imagenUrlActual, // Usa la nueva URL o mantiene la antigua
+            imagenUrl: newImageUrl ?? imagenUrlActual,
         };
         
         const { error: dbError } = await supabase.from('bloques_pagina').update({ contenido }).eq('id', bloqueId);
