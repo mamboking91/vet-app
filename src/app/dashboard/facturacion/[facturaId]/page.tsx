@@ -345,7 +345,6 @@ export default function DetalleFacturaPage() {
         </div>
       </section>
 
-      {/* =====> INICIO DE LA CORRECCIÓN: Resumen financiero reestructurado <===== */}
       <section className="mb-8 print:mb-6" id="invoice-summary">
         <div className="mt-6 flex justify-end">
           <div className="w-full max-w-sm space-y-1 text-sm print:text-xs">
@@ -385,22 +384,24 @@ export default function DetalleFacturaPage() {
                 <span>TOTAL FACTURA:</span>
                 <span>{formatCurrency(factura.total)}</span>
             </div>
-            {factura.estado !== 'Pagada' && factura.estado !== 'Anulada' && saldoPendiente >= 0.001 && (
+            
+            {/* =====> INICIO DE LA CORRECCIÓN: Lógica de Saldo/Pagado final <===== */}
+            {factura.estado === 'Pagada' && (
+                <div className="flex justify-end text-green-600 dark:text-green-400 font-semibold pt-1">
+                    <span>PAGADA</span>
+                </div>
+            )}
+            
+            {factura.estado !== 'Pagada' && factura.estado !== 'Anulada' && factura.estado !== 'Borrador' && (
                 <div className="flex justify-between text-orange-600 dark:text-orange-400 font-semibold pt-1">
                     <span>SALDO PENDIENTE:</span>
                     <span>{formatCurrency(saldoPendiente)}</span>
                 </div>
             )}
-             {factura.estado === 'Pagada' && (
-                <div className="flex justify-between text-green-600 dark:text-green-400 font-semibold pt-1">
-                    <span>PAGADA</span>
-                    <span>{formatCurrency(totalPagado)}</span>
-                </div>
-            )}
+            {/* =====> FIN DE LA CORRECCIÓN <===== */}
           </div>
         </div>
       </section>
-      {/* =====> FIN DE LA CORRECCIÓN <===== */}
 
       {(factura.notas_cliente || factura.notas_internas) && (
         <section className="mt-8 space-y-4 text-sm print:mt-4" id="invoice-notes">
