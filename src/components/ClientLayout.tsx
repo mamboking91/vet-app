@@ -1,50 +1,93 @@
 // src/components/ClientLayout.tsx
-"use client"; // Esta es la clave: este es un componente de cliente.
+
+"use client";
 
 import { usePathname } from 'next/navigation';
-import { ReactNode } from "react";
+import { ReactNode, useState, useEffect } from "react";
 import Link from 'next/link';
-import { ShoppingCart } from 'lucide-react';
+import { ShoppingCart, Menu, X } from 'lucide-react';
 
 // Providers y componentes de UI
 import { CartProvider, useCart } from '@/context/CartContext';
 import AccountButton from '@/components/ui/AccountButton';
 import AppointmentLink from '@/components/ui/AppointmentLink';
 import { Toaster } from "sonner";
+import { Button } from '@/components/ui/button';
 
 // Imports para el Loader
 import { LoadingProvider } from '@/context/LoadingContext';
 import PageLoader from '@/components/ui/PageLoader';
 import TransitionLink from '@/components/ui/TransitionLink';
+import { cn } from '@/lib/utils';
 
-// --- Componente Header Público (Modificado para usar TransitionLink) ---
+// --- Componente Header Público (Modificado para ser responsive) ---
 function PublicHeader() {
   const { totalItems } = useCart();
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const pathname = usePathname();
+
+  // Cierra el menú cada vez que la ruta cambia
+  useEffect(() => {
+    setIsMenuOpen(false);
+  }, [pathname]);
+
+  const navLinks = (
+    <>
+      <TransitionLink href="/" className="text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors">Inicio</TransitionLink>
+      <TransitionLink href="/tienda" className="text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors">Tienda</TransitionLink>
+      <AppointmentLink className="text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors">
+        Pedir Cita
+      </AppointmentLink>
+      <TransitionLink href="/nosotros" className="text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors">Nosotros</TransitionLink>
+      <TransitionLink href="/contacto" className="text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors">Contacto</TransitionLink>
+    </>
+  );
+
   return (
     <header className="bg-white/80 backdrop-blur-md sticky top-0 z-50 border-b border-gray-200">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
-          <div className="flex-shrink-0">
-            <TransitionLink href="/" className="text-2xl font-bold text-gray-800 hover:text-blue-600 transition-colors">
-              Gomera<span className="text-blue-500">Mascotas</span>
-            </TransitionLink>
+          <div className="flex items-center gap-x-2">
+            {/* Botón del menú para pantallas pequeñas a la izquierda */}
+            <div className="md:hidden">
+              <Button onClick={() => setIsMenuOpen(!isMenuOpen)} variant="ghost" size="icon">
+                {isMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+                <span className="sr-only">Abrir menú</span>
+              </Button>
+            </div>
+             {/* Logo */}
+            <div className="flex-shrink-0">
+                <TransitionLink href="/" className="text-2xl font-bold text-gray-800 hover:text-blue-600 transition-colors">
+                Gomera<span className="text-blue-500">Mascotas</span>
+                </TransitionLink>
+            </div>
           </div>
+
+          {/* Navegación para pantallas grandes */}
           <nav className="hidden md:flex md:gap-x-6">
-            <TransitionLink href="/" className="text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors">Inicio</TransitionLink>
-            <TransitionLink href="/tienda" className="text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors">Tienda</TransitionLink>
-            <AppointmentLink className="text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors">
-              Pedir Cita
-            </AppointmentLink>
-            <TransitionLink href="/nosotros" className="text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors">Nosotros</TransitionLink>
-            <TransitionLink href="/contacto" className="text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors">Contacto</TransitionLink>
+            {navLinks}
           </nav>
+
+          {/* Iconos de la derecha */}
           <div className="flex items-center gap-x-4">
-            <TransitionLink href="/carrito" className="relative p-2 rounded-full text-gray-500 hover:text-gray-900 hover:bg-gray-100 transition-colors">
+              <TransitionLink href="/carrito" className="relative p-2 rounded-full text-gray-500 hover:text-gray-900 hover:bg-gray-100 transition-colors">
               <ShoppingCart className="h-6 w-6" />
               {totalItems > 0 && (<span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-xs font-medium text-white">{totalItems}</span>)}
-            </TransitionLink>
-            <AccountButton />
+              </TransitionLink>
+              <AccountButton />
           </div>
+        </div>
+
+         {/* Menú desplegable para pantallas pequeñas */}
+        <div
+          className={cn(
+            "md:hidden overflow-hidden transition-all duration-300 ease-in-out",
+            isMenuOpen ? "max-h-96 opacity-100" : "max-h-0 opacity-0"
+          )}
+        >
+          <nav className="flex flex-col items-center gap-y-4 py-4 border-t border-gray-200">
+            {navLinks}
+          </nav>
         </div>
       </div>
     </header>
@@ -70,23 +113,19 @@ function PublicFooter() {
       );
 }
 
-// --- Componente principal que envuelve toda la lógica de cliente ---
+// --- Componente principal que envuelve toda la lógica de cliente (Sin cambios estructurales) ---
 export default function ClientLayout({ children, logoUrl }: { children: ReactNode, logoUrl: string }) {
   const pathname = usePathname();
   const isDashboard = pathname.startsWith('/dashboard');
 
   return (
-    // Envolvemos la aplicación con todos los providers
     <LoadingProvider>
       <CartProvider>
-        {/* El PageLoader se sitúa aquí para estar por encima de todo */}
         <PageLoader logoUrl={logoUrl} />
 
         {isDashboard ? (
-          // Si estamos en el dashboard, solo renderizamos el contenido
           children
         ) : (
-          // Si estamos en la parte pública, renderizamos todo el layout público
           <div className="flex flex-col min-h-screen">
             <PublicHeader />
             <main className="flex-grow">
