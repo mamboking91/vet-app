@@ -1,4 +1,3 @@
-// src/app/dashboard/configuracion/contenido/FormularioCaracteristicas.tsx
 "use client";
 
 import { useState, useTransition } from 'react';
@@ -6,82 +5,102 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Save, Sparkles, Stethoscope, HeartPulse, Siren } from 'lucide-react';
+import { Loader2, Save, PlusCircle, Trash2 } from 'lucide-react';
 import { actualizarContenidoCaracteristicas } from './actions';
 import type { BloquePagina, ContenidoCaracteristicaItem } from './types';
-import RichTextEditor from './RichTextEditor'; // Importamos el editor
+import RichTextEditor from './RichTextEditor';
 
 interface FormularioCaracteristicasProps {
   bloque: BloquePagina;
 }
 
-const iconComponents: { [key: string]: React.ElementType } = {
-    Stethoscope, HeartPulse, Siren, Sparkles,
-};
-const iconOptions = Object.keys(iconComponents);
-
 export default function FormularioCaracteristicas({ bloque }: FormularioCaracteristicasProps) {
   const [isPending, startTransition] = useTransition();
   const [items, setItems] = useState<ContenidoCaracteristicaItem[]>(bloque.contenido.items || []);
 
-  const handleItemChange = (index: number, field: keyof Omit<ContenidoCaracteristicaItem, 'id'>, value: string) => {
-    const newItems = [...items];
-    const currentItem = newItems[index];
-    if (currentItem) {
-      (currentItem[field] as any) = value;
-      setItems(newItems);
-    }
+  const handleItemChange = (id: string, field: keyof ContenidoCaracteristicaItem, value: string) => {
+    setItems(currentItems =>
+      currentItems.map(item => (item.id === id ? { ...item, [field]: value } : item))
+    );
+  };
+
+  const handleAddItem = () => {
+    const newItemId = `item_${Date.now()}`;
+    setItems([...items, { id: newItemId, icono: 'Sparkles', titulo: 'Nueva Característica', descripcion: '<p>Descripción de la nueva característica.</p>' }]);
+  };
+
+  const handleRemoveItem = (id: string) => {
+    setItems(items.filter(item => item.id !== id));
   };
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     startTransition(async () => {
       const result = await actualizarContenidoCaracteristicas(bloque.id, items);
-      if (result.success) toast.success(result.message);
-      else toast.error("Error al actualizar", { description: result.error?.message });
+      if (result.success) {
+        toast.success(result.message);
+      } else {
+        toast.error('Error al actualizar', {
+          description: result.error?.message,
+        });
+      }
     });
   };
 
   return (
-    <form onSubmit={handleSubmit} className="py-4">
-      <div className="space-y-6">
-        {items.map((item, index) => {
-           const IconComponent = iconComponents[item.icono] || Sparkles;
-           return (
-            <div key={item.id || index} className="p-4 border rounded-lg bg-slate-50 space-y-4">
-              <h4 className="font-semibold text-gray-700">Tarjeta de Característica #{index + 1}</h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Icono</Label>
-                  <Select value={item.icono} onValueChange={(value) => handleItemChange(index, 'icono', value)}>
-                    <SelectTrigger><SelectValue><div className="flex items-center gap-2"><IconComponent className="h-4 w-4"/> {item.icono}</div></SelectValue></SelectTrigger>
-                    <SelectContent>
-                      {iconOptions.map(iconName => {
-                          const SelectIcon = iconComponents[iconName];
-                          return (<SelectItem key={iconName} value={iconName}><div className="flex items-center gap-2"><SelectIcon className="h-4 w-4"/> {iconName}</div></SelectItem>)
-                      })}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Título</Label>
-                  <Input value={item.titulo} onChange={(e) => handleItemChange(index, 'titulo', e.target.value)} required />
-                </div>
+    <form onSubmit={handleSubmit} className="space-y-6 py-4">
+      <div className="space-y-4">
+        {items.map((item, index) => (
+          <div key={item.id} className="border p-4 rounded-md space-y-4 relative">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor={`titulo-${index}`}>Título</Label>
+                <Input
+                  id={`titulo-${index}`}
+                  value={item.titulo}
+                  onChange={(e) => handleItemChange(item.id, 'titulo', e.target.value)}
+                />
               </div>
               <div className="space-y-2">
-                <Label>Descripción (con formato)</Label>
-                <RichTextEditor
-                  initialContent={item.descripcion}
-                  onChange={(html) => handleItemChange(index, 'descripcion', html)}
+                <Label htmlFor={`icono-${index}`}>Icono (Nombre de Lucide)</Label>
+                <Input
+                  id={`icono-${index}`}
+                  value={item.icono}
+                  onChange={(e) => handleItemChange(item.id, 'icono', e.target.value)}
                 />
               </div>
             </div>
-           )
-        })}
+            <div className="space-y-2">
+              <Label htmlFor={`descripcion-${index}`}>Descripción</Label>
+              {/* --- CORRECCIÓN AQUÍ --- */}
+              <RichTextEditor
+                content={item.descripcion}
+                onUpdate={(newContent) => handleItemChange(item.id, 'descripcion', newContent)}
+              />
+              {/* --- FIN DE LA CORRECCIÓN --- */}
+            </div>
+            <Button
+              type="button"
+              variant="destructive"
+              size="icon"
+              className="absolute top-2 right-2"
+              onClick={() => handleRemoveItem(item.id)}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        ))}
       </div>
-      <div className="flex justify-end mt-6">
-        <Button type="submit" disabled={isPending}><Save className="mr-2 h-4 w-4" />{isPending ? "Guardando..." : "Guardar Cambios"}</Button>
+
+      <div className="flex justify-between items-center">
+        <Button type="button" variant="outline" onClick={handleAddItem}>
+          <PlusCircle className="mr-2 h-4 w-4" />
+          Añadir Característica
+        </Button>
+        <Button type="submit" disabled={isPending}>
+          {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+          {isPending ? 'Guardando...' : 'Guardar Cambios'}
+        </Button>
       </div>
     </form>
   );
