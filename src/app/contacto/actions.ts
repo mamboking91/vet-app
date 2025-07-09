@@ -42,12 +42,21 @@ export async function sendContactMessage(prevState: any, formData: FormData) {
 
   try {
     const resend = new Resend(process.env.RESEND_API_KEY);
+    
+    // --- INICIO DE LA CORRECCIÓN ---
+    // En desarrollo, Resend solo permite enviar a la dirección de correo electrónico registrada.
+    // Usamos el email del administrador configurado en el entorno como destino principal.
+    // Asegúrate de que process.env.ADMIN_EMAIL sea el email con el que te registraste en Resend.
+    const toAddress = process.env.NODE_ENV === 'development' 
+        ? 'gomeramascotas@gmail.com' 
+        : adminEmail;
+    // --- FIN DE LA CORRECCIÓN ---
 
-    // Envío del email al administrador
     await resend.emails.send({
-      from: 'Contacto Web <info@gomeramascotas.com>',
-      to: adminEmail,
+      from: 'Contacto Web <onboarding@resend.dev>',
+      to: toAddress,
       subject: `Nuevo Mensaje de Contacto: ${subject}`,
+      replyTo: email, 
       html: `
         <h1>Nuevo mensaje desde la web</h1>
         <p><strong>De:</strong> ${name} (${email})</p>
@@ -57,7 +66,7 @@ export async function sendContactMessage(prevState: any, formData: FormData) {
       `,
     });
 
-    console.log("Mensaje de contacto enviado con éxito a:", adminEmail);
+    console.log("Mensaje de contacto enviado con éxito a:", toAddress);
     return {
       message: "¡Gracias por tu mensaje! Nos pondremos en contacto contigo pronto.",
       error: false,
