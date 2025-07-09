@@ -72,13 +72,9 @@ export default function PedidoManualForm({ clientes, productos }: PedidoManualFo
     }
   };
 
-  // =====> INICIO DE LA CORRECCIÓN 2: Lógica de edición de cliente mejorada <=====
   const handleManualClientChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
       setManualClient(prev => ({ ...prev, [e.target.name]: e.target.value }));
-      // Ya no deseleccionamos al cliente. El usuario puede editar los datos
-      // y la lógica de envío decidirá si se crea un cliente nuevo o se usa el existente.
   };
-  // =====> FIN DE LA CORRECCIÓN 2 <=====
 
   const handleAddItem = (producto: ProductoParaSelector) => {
     if (producto.precio_venta === null) {
@@ -113,8 +109,8 @@ export default function PedidoManualForm({ clientes, productos }: PedidoManualFo
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!clienteSeleccionadoId && !manualClient.email) {
-        setError("Debes seleccionar un cliente existente o rellenar los datos manualmente.");
+    if (!manualClient.email) {
+        setError("El campo de email del cliente es obligatorio.");
         toast.error("Faltan los datos del cliente.");
         return;
     }
@@ -125,12 +121,15 @@ export default function PedidoManualForm({ clientes, productos }: PedidoManualFo
     }
     setError(null);
     
+    // --- INICIO DE LA CORRECCIÓN: Payload de envío ---
     const payload = {
         clienteId: clienteSeleccionadoId || undefined,
-        clienteManual: !clienteSeleccionadoId ? manualClient : undefined,
+        // Siempre enviamos los datos del formulario, ya sea de un cliente cargado o uno nuevo
+        clienteManual: manualClient,
         items: items,
         total: totalPedido
     };
+    // --- FIN DE LA CORRECCIÓN: Payload de envío ---
     
     startTransition(async () => {
         const result = await createManualOrder(payload);

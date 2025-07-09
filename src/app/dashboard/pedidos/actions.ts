@@ -8,16 +8,10 @@ import { z } from "zod";
 import { ESTADOS_PEDIDO, type EstadoPedido, type DireccionEnvio } from "./types";
 import { sendOrderConfirmationEmail } from "@/app/emails/actions";
 
-// ==================================================================
-// INICIO DE LA CORRECCIÓN
-// ==================================================================
-
 export async function getOrderById(orderId: string) {
   const cookieStore = cookies();
   const supabase = createServerActionClient({ cookies: () => cookieStore });
   
-  // LA CORRECCIÓN ESTÁ EN ESTA CONSULTA
-  // Le decimos a Supabase explícitamente cómo unir las tablas.
   const { data: order, error } = await supabase
     .from('pedidos')
     .select(
@@ -64,10 +58,6 @@ export async function getRecentOrders() {
   }
   return data;
 }
-
-// ==================================================================
-// FIN DE LA CORRECCIÓN (EL RESTO DE TU CÓDIGO PERMANECE IGUAL)
-// ==================================================================
 
 const updateStatusSchema = z.object({
   estado: z.enum(ESTADOS_PEDIDO, {
@@ -221,14 +211,15 @@ const manualClientSchema = z.object({
     telefono: z.string().optional(),
 });
 
+// --- INICIO DE LA CORRECCIÓN: Esquema de Payload ---
 const createManualOrderSchema = z.object({
   clienteId: z.string().uuid("El ID del cliente no es válido.").optional().or(z.literal('')),
-  clienteManual: manualClientSchema.optional(),
+  // clienteManual ahora siempre vendrá con los datos del formulario
+  clienteManual: manualClientSchema,
   items: z.array(itemSchema).min(1, "El pedido debe tener al menos un artículo."),
   total: z.number().positive("El total del pedido debe ser positivo."),
-}).refine(data => data.clienteId || data.clienteManual, {
-  message: "Se debe proporcionar un cliente existente o datos de cliente manual.",
 });
+// --- FIN DE LA CORRECCIÓN: Esquema de Payload ---
 
 type ManualOrderPayload = z.infer<typeof createManualOrderSchema>;
 
@@ -246,45 +237,53 @@ export async function createManualOrder(payload: ManualOrderPayload) {
   const cookieStore = cookies();
   const supabase = createServerActionClient({ cookies: () => cookieStore });
 
-  let direccionEnvio, emailCliente, nombreCompleto;
-  if(clienteManual) {
-    direccionEnvio = clienteManual;
-    emailCliente = clienteManual.email;
-    nombreCompleto = clienteManual.nombre_completo;
-  } else if (clienteId) {
-    const { data: clienteData, error: clienteError } = await supabase.from('propietarios').select('*').eq('id', clienteId).single();
-    if(clienteError || !clienteData) throw new Error("No se pudo obtener la información del cliente seleccionado.");
-    direccionEnvio = clienteData;
-    emailCliente = clienteData.email;
-    nombreCompleto = clienteData.nombre_completo;
+  // --- INICIO DE LA CORRECCIÓN: Lógica de cliente y email ---
+  let finalCustomerId: string | null = clienteId || null;
+  let isNewUser = false;
+
+  // Si hay un ID de cliente, actualizamos sus datos con los del formulario.
+  // Si no, verificamos si existe por email para asignarlo, o lo creamos.
+  if (clienteId) {
+    const { error: updateError } = await supabase.from('propietarios').update(clienteManual).eq('id', clienteId);
+    if(updateError) console.warn("No se pudo actualizar la información del cliente existente:", updateError.message);
   } else {
-    throw new Error("No se proporcionaron datos de cliente.");
+    const { data: existingByEmail } = await supabase.from('propietarios').select('id').eq('email', clienteManual.email).single();
+    if (existingByEmail) {
+        finalCustomerId = existingByEmail.id;
+    } else {
+        const { data: newCustomer, error: createError } = await supabase.from('propietarios').insert(clienteManual).select('id').single();
+        if (createError) throw new Error(`No se pudo crear el nuevo cliente: ${createError.message}`);
+        finalCustomerId = newCustomer.id;
+        isNewUser = true;
+    }
   }
 
   const rpcParams = {
-      cliente_id_param: clienteId || null,
-      cliente_manual_param: clienteManual || null,
+      cliente_id_param: finalCustomerId,
+      cliente_manual_param: clienteManual, 
       items_param: items,
       total_param: total,
   };
 
   try {
     const { data: orderId, error } = await supabase.rpc('crear_pedido_manual_completo', rpcParams);
-
     if (error) {
         throw new Error(error.message);
     }
     
-    if(emailCliente && nombreCompleto && direccionEnvio){
+    // Obtenemos el logo de la clínica para el email
+    const { data: clinicData } = await supabase.from('datos_clinica').select('logo_url').single();
+
+    if(clienteManual.email && clienteManual.nombre_completo){
       await sendOrderConfirmationEmail({
           pedidoId: orderId,
           fechaPedido: new Date(),
           direccionEnvio: {
-              nombre_completo: nombreCompleto,
-              direccion: direccionEnvio.direccion || '',
-              localidad: direccionEnvio.localidad || '',
-              provincia: direccionEnvio.provincia || '',
-              codigo_postal: direccionEnvio.codigo_postal || '',
+              nombre_completo: clienteManual.nombre_completo,
+              direccion: clienteManual.direccion,
+              localidad: clienteManual.localidad,
+              provincia: clienteManual.provincia,
+              codigo_postal: clienteManual.codigo_postal,
           },
           items: items.map(item => ({
               nombre: item.nombre,
@@ -292,10 +291,13 @@ export async function createManualOrder(payload: ManualOrderPayload) {
               precio_final_unitario: item.subtotal / item.cantidad,
           })),
           total: total,
-          emailTo: emailCliente,
-          customerName: nombreCompleto.split(' ')[0] || nombreCompleto,
+          emailTo: clienteManual.email,
+          customerName: clienteManual.nombre_completo.split(' ')[0] || clienteManual.nombre_completo,
+          logoUrl: clinicData?.logo_url,
+          isNewUser: isNewUser, // Indicamos si es un nuevo usuario para el texto del email
       });
     }
+    // --- FIN DE LA CORRECCIÓN: Lógica de cliente y email ---
 
     revalidatePath("/dashboard/pedidos");
     revalidatePath("/dashboard/facturacion");

@@ -1,4 +1,5 @@
 // src/app/api/webhooks/stripe/route.ts
+// src/app/api/webhooks/stripe/route.ts
 
 import Stripe from 'stripe';
 import { NextResponse } from 'next/server';
@@ -61,19 +62,16 @@ export async function POST(req: Request) {
         const direccionEnvio: DireccionEnvio = JSON.parse(metadata.direccion_envio_json);
         const itemsPedido: CartItemMetadata[] = JSON.parse(metadata.items_pedido_json);
         
-        // =====> INICIO DE LA CORRECCIÓN <=====
-        // Leemos TODOS los detalles del descuento directamente desde los metadatos.
         const montoDescuento = (session.total_details?.amount_discount || 0) / 100;
         const codigoDescuento = metadata.codigo_descuento || null;
         const tipoDescuento = metadata.tipo_descuento || null;
-        // Convertimos el valor del descuento de string a número.
         const valorDescuento = metadata.valor_descuento ? Number(metadata.valor_descuento) : null;
-        // =====> FIN DE LA CORRECCIÓN <=====
+        const totalPagado = (session.amount_total || 0) / 100;
 
         const rpcParams = {
             in_propietario_id: metadata.customer_id || null,
             in_email_cliente: session.customer_details?.email,
-            in_total: (session.amount_total || 0) / 100,
+            in_total: totalPagado,
             in_direccion_envio: direccionEnvio,
             in_metodo_pago: 'Stripe',
             in_transaccion_id: typeof session.payment_intent === 'string' ? session.payment_intent : null,
@@ -81,7 +79,6 @@ export async function POST(req: Request) {
             in_items: itemsPedido,
             in_monto_descuento: montoDescuento,
             in_codigo_descuento: codigoDescuento,
-            // Pasamos los nuevos parámetros a la función RPC
             in_tipo_descuento: tipoDescuento,
             in_valor_descuento: valorDescuento,
         };
@@ -96,8 +93,38 @@ export async function POST(req: Request) {
             throw new Error("La función RPC no devolvió un ID de pedido válido.");
         }
 
-        // Aquí iría la lógica para enviar el email de confirmación si lo deseas
-        // ...
+        // --- INICIO DE LA CORRECCIÓN ---
+        // Preparamos y enviamos el email de confirmación
+        const customerName = session.customer_details?.name || direccionEnvio.nombre_completo || 'Cliente';
+        const emailTo = session.customer_details?.email;
+        const { data: clinicData } = await supabaseAdmin.from('datos_clinica').select('logo_url').single();
+
+        if (emailTo) {
+          const itemsParaEmail = itemsPedido.map(item => ({
+            nombre: item.nombre,
+            cantidad: item.cantidad,
+            precio_final_unitario: item.precio_unitario * (1 + (item.porcentaje_impuesto || 0) / 100),
+          }));
+          
+          await sendOrderConfirmationEmail({
+            pedidoId: newOrderId,
+            fechaPedido: new Date(),
+            direccionEnvio: {
+                nombre_completo: direccionEnvio.nombre_completo || customerName,
+                direccion: direccionEnvio.direccion || 'No especificada',
+                localidad: direccionEnvio.localidad || 'No especificada',
+                provincia: direccionEnvio.provincia || 'No especificada',
+                codigo_postal: direccionEnvio.codigo_postal || 'N/A',
+            },
+            items: itemsParaEmail,
+            total: totalPagado,
+            emailTo: emailTo,
+            logoUrl: clinicData?.logo_url,
+            customerName: customerName,
+            isNewUser: !metadata.customer_id, // Asumimos que es nuevo si no viene ID de cliente
+          });
+        }
+        // --- FIN DE LA CORRECCIÓN ---
 
     } catch (e: any) {
         console.error(`[Stripe Webhook] Error crítico al procesar la sesión ${session.id}:`, e.message);
