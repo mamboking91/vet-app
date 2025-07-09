@@ -4,24 +4,27 @@
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { ArrowDown, ArrowUp, Edit, GripVertical, Trash2, Loader2, ChevronDown, FileWarning, Tv, Sparkles, ShoppingCart, Image as ImageIcon, Megaphone } from 'lucide-react';
+import { ArrowDown, ArrowUp, Edit, GripVertical, Trash2, Loader2, ChevronDown, FileWarning, Tv, Sparkles, ShoppingCart, Image as ImageIcon, Megaphone, Instagram } from 'lucide-react';
 import FormularioHeroe from './FormularioHeroe';
 import FormularioCaracteristicas from './FormularioCaracteristicas';
 import FormularioProductosDestacados from './FormularioProductosDestacados';
 import FormularioTextoConImagen from './FormularioTextoConImagen';
 import FormularioCta from './FormularioCTA';
+import FormularioInstagram from './FormularioInstagram';
 import type { BloquePagina } from './types';
 import { useState } from 'react';
 
-// Mapeo de tipos de bloque a componentes para la UI
+// --- INICIO DE LA CORRECCIÓN ---
 const infoBloques: { [key: string]: { icon: React.ElementType, nombre: string } } = {
   heroe: { icon: Tv, nombre: "Sección Héroe" },
   caracteristicas: { icon: Sparkles, nombre: "Lista de Características" },
   productos_destacados: { icon: ShoppingCart, nombre: "Productos Destacados" },
   texto_con_imagen: { icon: ImageIcon, nombre: "Texto con Imagen" },
+  instagram: { icon: Instagram, nombre: "Galería de Instagram" },
   cta: { icon: Megaphone, nombre: "Llamada a la Acción (CTA)" },
   default: { icon: FileWarning, nombre: "Bloque Desconocido" }
 };
+// --- FIN DE LA CORRECCIÓN ---
 
 interface BloqueEditableProps {
   bloque: BloquePagina;
@@ -33,7 +36,6 @@ interface BloqueEditableProps {
   deletingId: string | null;
 }
 
-// Función para renderizar el formulario correcto según el tipo de bloque
 const renderFormularioEdicion = (bloque: BloquePagina) => {
     switch (bloque.tipo_bloque) {
         case 'heroe': return <FormularioHeroe bloque={bloque} />;
@@ -41,6 +43,9 @@ const renderFormularioEdicion = (bloque: BloquePagina) => {
         case 'productos_destacados': return <FormularioProductosDestacados bloque={bloque} />;
         case 'texto_con_imagen': return <FormularioTextoConImagen bloque={bloque} />;
         case 'cta': return <FormularioCta bloque={bloque} />;
+        // --- INICIO DE LA CORRECCIÓN ---
+        case 'instagram': return <FormularioInstagram bloque={bloque} />;
+        // --- FIN DE LA CORRECCIÓN ---
         default: return <p className="p-4 text-sm text-muted-foreground">No hay formulario para este tipo de bloque.</p>;
     }
 };

@@ -5,7 +5,7 @@ import { createServerActionClient } from "@supabase/auth-helpers-nextjs";
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import type { ContenidoCaracteristicaItem } from './types';
+import type { ContenidoCaracteristicaItem, ContenidoInstagramPost } from './types'; // Añadido ContenidoInstagramPost
 
 async function checkAdmin() {
     const cookieStore = cookies();
@@ -43,7 +43,12 @@ export async function crearNuevoBloque(pagina: string, tipo_bloque: string, orde
         contenidoPorDefecto = { titulo: "Título de la Sección", texto: "<p>Texto de ejemplo...</p>", imagenUrl: "https://placehold.co/800x600/a3e635/4d7c0f.png?text=Sube+una+imagen", posicionImagen: "derecha", boton: { texto: "Saber Más", enlace: "/" } };
     } else if (tipo_bloque === 'cta') {
         contenidoPorDefecto = { titulo: "<h2>Llamada a la acción</h2>", boton: { texto: "Empezar Ahora", enlace: "/" } };
+    } 
+    // --- INICIO DE LA CORRECCIÓN ---
+    else if (tipo_bloque === 'instagram') {
+        contenidoPorDefecto = { titulo: "Síguenos en @gomera_mascotas", posts: [] };
     }
+    // --- FIN DE LA CORRECCIÓN ---
 
     const { data, error } = await supabase.from('bloques_pagina').insert({ pagina, tipo_bloque, orden, contenido: contenidoPorDefecto }).select().single();
     if (error) throw error;
@@ -224,3 +229,51 @@ export async function actualizarContenidoCta(bloqueId: string, formData: FormDat
         return { success: true, message: "Bloque 'Llamada a la Acción' actualizado." };
     } catch (e: any) { return { success: false, error: { message: e.message } }; }
 }
+
+// --- INICIO DE LA CORRECCIÓN ---
+export async function actualizarContenidoInstagram(formData: FormData) {
+    try {
+        const { supabase } = await checkAdmin();
+        const bloqueId = formData.get('bloqueId') as string;
+        const BUCKET_NAME = 'pagina-assets';
+
+        const titulo = formData.get('titulo') as string;
+        let posts: ContenidoInstagramPost[] = JSON.parse(formData.get('posts') as string);
+        
+        const uploadPromises = posts.map(async (post) => {
+            const imageFile = formData.get(`post_image_${post.id}`) as File | null;
+            if (imageFile && imageFile.size > 0) {
+                const fileExt = imageFile.name.split('.').pop() || 'jpg';
+                const fileName = `instagram/${bloqueId}-${post.id}-${Date.now()}.${fileExt}`;
+                
+                // Si ya existe una imagen para este post, la eliminamos primero
+                if (post.imagenUrl && !post.imagenUrl.includes('placehold.co')) {
+                    const oldFileName = post.imagenUrl.split('/').pop();
+                    if (oldFileName) {
+                       await supabase.storage.from(BUCKET_NAME).remove([`instagram/${oldFileName}`]);
+                    }
+                }
+                
+                const { error: uploadError, data: uploadData } = await supabase.storage.from(BUCKET_NAME).upload(fileName, imageFile);
+                if (uploadError) throw new Error(`Error subiendo imagen para post ${post.id}: ${uploadError.message}`);
+                
+                return { ...post, file: undefined, imagenUrl: supabase.storage.from(BUCKET_NAME).getPublicUrl(uploadData.path).data.publicUrl };
+            }
+            return { ...post, file: undefined };
+        });
+
+        const updatedPosts = await Promise.all(uploadPromises);
+
+        const finalContent = { titulo, posts: updatedPosts };
+        
+        const { error: dbError } = await supabase.from('bloques_pagina').update({ contenido: finalContent }).eq('id', bloqueId);
+        if (dbError) throw dbError;
+
+        revalidatePath('/');
+        revalidatePath('/dashboard/configuracion/contenido');
+        return { success: true, message: "Galería de Instagram actualizada.", updatedPosts };
+    } catch (e: any) {
+        return { success: false, error: { message: e.message } };
+    }
+}
+// --- FIN DE LA CORRECCIÓN ---

@@ -5,18 +5,21 @@ import { useState, useTransition } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from '@/components/ui/dialog';
-import { Plus, Loader2, ShoppingCart, Tv, Sparkles, Image as ImageIcon, Megaphone } from 'lucide-react';
+import { Plus, Loader2, ShoppingCart, Tv, Sparkles, Image as ImageIcon, Megaphone, Instagram } from 'lucide-react';
 import BloqueEditable from './BloqueEditable';
 import { actualizarOrdenBloques, crearNuevoBloque, eliminarBloque } from './actions';
 import type { BloquePagina } from './types';
 
+// --- INICIO DE LA CORRECCIÓN ---
 const infoBloques: { [key: string]: { icon: React.ElementType, nombre: string } } = {
   heroe: { icon: Tv, nombre: "Sección Héroe" },
   caracteristicas: { icon: Sparkles, nombre: "Lista de Características" },
   productos_destacados: { icon: ShoppingCart, nombre: "Productos Destacados" },
   texto_con_imagen: { icon: ImageIcon, nombre: "Texto con Imagen" },
+  instagram: { icon: Instagram, nombre: "Galería de Instagram" },
   cta: { icon: Megaphone, nombre: "Llamada a la Acción (CTA)" },
 };
+// --- FIN DE LA CORRECCIÓN ---
 
 interface EditorDeBloquesProps {
   initialBloques: BloquePagina[];
@@ -121,4 +124,3 @@ export default function EditorDeBloques({ initialBloques }: EditorDeBloquesProps
     </div>
   );
 }
-
