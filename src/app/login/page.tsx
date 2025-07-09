@@ -1,4 +1,4 @@
-// app/login/page.tsx
+// src/app/login/page.tsx
 "use client";
 
 import React, { useState } from 'react';
@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from 'next/link';
-import { Chrome } from 'lucide-react'; // Importamos el icono de Google
+import { Chrome } from 'lucide-react';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -37,7 +37,6 @@ export default function LoginPage() {
     setLoading(false);
   };
 
-  // --- NUEVA FUNCIÓN PARA EL LOGIN CON GOOGLE ---
   const handleGoogleLogin = async () => {
     setLoading(true);
     setError(null);
@@ -47,7 +46,6 @@ export default function LoginPage() {
         redirectTo: `${location.origin}/auth/callback`,
       },
     });
-    // La redirección a Google maneja el resto, no es necesario setLoading(false)
   };
 
   return (
@@ -61,7 +59,6 @@ export default function LoginPage() {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {/* --- NUEVO BOTÓN DE GOOGLE --- */}
             <Button variant="outline" className="w-full" onClick={handleGoogleLogin} disabled={loading}>
               <Chrome className="mr-2 h-4 w-4" />
               Continuar con Google
@@ -86,7 +83,14 @@ export default function LoginPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="password">Contraseña</Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="password">Contraseña</Label>
+                  {/* --- INICIO DE LA CORRECCIÓN --- */}
+                  <Link href="/forgot-password" className="text-sm font-medium text-primary hover:underline">
+                    ¿Olvidaste la contraseña?
+                  </Link>
+                   {/* --- FIN DE LA CORRECCIÓN --- */}
+                </div>
                 <Input
                   id="password"
                   type="password"

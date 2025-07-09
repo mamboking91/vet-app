@@ -1,6 +1,4 @@
 // src/app/api/webhooks/stripe/route.ts
-// src/app/api/webhooks/stripe/route.ts
-
 import Stripe from 'stripe';
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
@@ -55,22 +53,60 @@ export async function POST(req: Request) {
         const supabaseAdmin = getSupabaseAdminClient();
         const metadata = session.metadata;
 
-        if (!metadata || !metadata.direccion_envio_json || !metadata.items_pedido_json) {
-            throw new Error("La sesión de Stripe no contiene los metadatos necesarios.");
+        if (!metadata || !metadata.direccion_envio_json || !metadata.items_pedido_json || !session.customer_details?.email) {
+            throw new Error("La sesión de Stripe no contiene los metadatos o el email del cliente necesarios.");
         }
 
         const direccionEnvio: DireccionEnvio = JSON.parse(metadata.direccion_envio_json);
         const itemsPedido: CartItemMetadata[] = JSON.parse(metadata.items_pedido_json);
+        const emailCliente = session.customer_details.email;
+        let finalCustomerId = metadata.customer_id;
+        let isNewUser = false;
         
+        // --- INICIO DE LA CORRECCIÓN ---
+        // Si no hay un ID de cliente (es un invitado), lo buscamos o lo creamos.
+        if (!finalCustomerId) {
+            const { data: existingCustomer } = await supabaseAdmin
+                .from('propietarios')
+                .select('id')
+                .eq('email', emailCliente)
+                .single();
+
+            if (existingCustomer) {
+                finalCustomerId = existingCustomer.id;
+            } else {
+                const { data: newCustomer, error: createError } = await supabaseAdmin
+                    .from('propietarios')
+                    .insert({
+                        nombre_completo: direccionEnvio.nombre_completo,
+                        email: emailCliente,
+                        telefono: direccionEnvio.telefono || null,
+                        direccion: direccionEnvio.direccion,
+                        localidad: direccionEnvio.localidad,
+                        provincia: direccionEnvio.provincia,
+                        codigo_postal: direccionEnvio.codigo_postal,
+                    })
+                    .select('id')
+                    .single();
+
+                if (createError) throw new Error(`Error al crear nuevo cliente: ${createError.message}`);
+                
+                finalCustomerId = newCustomer.id;
+                isNewUser = true; // Marcamos que es un nuevo usuario para el email de bienvenida.
+            }
+        }
+        // --- FIN DE LA CORRECCIÓN ---
+
         const montoDescuento = (session.total_details?.amount_discount || 0) / 100;
         const codigoDescuento = metadata.codigo_descuento || null;
         const tipoDescuento = metadata.tipo_descuento || null;
         const valorDescuento = metadata.valor_descuento ? Number(metadata.valor_descuento) : null;
         const totalPagado = (session.amount_total || 0) / 100;
-
+        
+        // Ahora `finalCustomerId` siempre tendrá un valor.
         const rpcParams = {
-            in_propietario_id: metadata.customer_id || null,
-            in_email_cliente: session.customer_details?.email,
+            in_propietario_id: finalCustomerId,
+            in_email_cliente: emailCliente,
             in_total: totalPagado,
             in_direccion_envio: direccionEnvio,
             in_metodo_pago: 'Stripe',
@@ -92,39 +128,33 @@ export async function POST(req: Request) {
         if (!newOrderId) {
             throw new Error("La función RPC no devolvió un ID de pedido válido.");
         }
-
-        // --- INICIO DE LA CORRECCIÓN ---
-        // Preparamos y enviamos el email de confirmación
+        
         const customerName = session.customer_details?.name || direccionEnvio.nombre_completo || 'Cliente';
-        const emailTo = session.customer_details?.email;
         const { data: clinicData } = await supabaseAdmin.from('datos_clinica').select('logo_url').single();
 
-        if (emailTo) {
-          const itemsParaEmail = itemsPedido.map(item => ({
-            nombre: item.nombre,
-            cantidad: item.cantidad,
-            precio_final_unitario: item.precio_unitario * (1 + (item.porcentaje_impuesto || 0) / 100),
-          }));
-          
-          await sendOrderConfirmationEmail({
-            pedidoId: newOrderId,
-            fechaPedido: new Date(),
-            direccionEnvio: {
-                nombre_completo: direccionEnvio.nombre_completo || customerName,
-                direccion: direccionEnvio.direccion || 'No especificada',
-                localidad: direccionEnvio.localidad || 'No especificada',
-                provincia: direccionEnvio.provincia || 'No especificada',
-                codigo_postal: direccionEnvio.codigo_postal || 'N/A',
-            },
-            items: itemsParaEmail,
-            total: totalPagado,
-            emailTo: emailTo,
-            logoUrl: clinicData?.logo_url,
-            customerName: customerName,
-            isNewUser: !metadata.customer_id, // Asumimos que es nuevo si no viene ID de cliente
-          });
-        }
-        // --- FIN DE LA CORRECCIÓN ---
+        const itemsParaEmail = itemsPedido.map(item => ({
+          nombre: item.nombre,
+          cantidad: item.cantidad,
+          precio_final_unitario: item.precio_unitario * (1 + (item.porcentaje_impuesto || 0) / 100),
+        }));
+        
+        await sendOrderConfirmationEmail({
+          pedidoId: newOrderId,
+          fechaPedido: new Date(),
+          direccionEnvio: {
+              nombre_completo: direccionEnvio.nombre_completo || customerName,
+              direccion: direccionEnvio.direccion || 'No especificada',
+              localidad: direccionEnvio.localidad || 'No especificada',
+              provincia: direccionEnvio.provincia || 'No especificada',
+              codigo_postal: direccionEnvio.codigo_postal || 'N/A',
+          },
+          items: itemsParaEmail,
+          total: totalPagado,
+          emailTo: emailCliente,
+          logoUrl: clinicData?.logo_url,
+          customerName: customerName,
+          isNewUser: isNewUser,
+        });
 
     } catch (e: any) {
         console.error(`[Stripe Webhook] Error crítico al procesar la sesión ${session.id}:`, e.message);
