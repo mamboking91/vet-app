@@ -32,11 +32,6 @@ function ProductCard({ product }: { product: any }) {
               {nombreProducto}
             </h3>
             <p className="text-lg font-bold text-blue-600 mt-2">{precioFinalDisplay}</p>
-            <div className="mt-2">
-              {product.stock_total_actual > 0 && product.stock_total_actual < 10 && (
-                <Badge variant="destructive">¡Últimas unidades!</Badge>
-              )}
-            </div>
           </div>
         </CardContent>
       </Card>
@@ -62,7 +57,8 @@ export default async function TiendaPage({ searchParams }: TiendaPageProps) {
     .from('productos_inventario_con_stock')
     .select('*') 
     .eq('en_tienda', true)
-    .gt('stock_total_actual', 0)
+    // --- CORRECCIÓN AQUÍ: Se elimina el filtro de stock ---
+    // .gt('stock_total_actual', 0) 
     .order('nombre', { ascending: true });
 
   if (searchQuery) {
@@ -70,8 +66,6 @@ export default async function TiendaPage({ searchParams }: TiendaPageProps) {
   }
 
   if (categoryFilter) {
-    // --- CORRECCIÓN AQUÍ ---
-    // Se asegura que la consulta para el filtro de JSONB sea un string.
     query = query.contains('categorias_tienda', JSON.stringify([{ nombre: categoryFilter }]));
   }
 

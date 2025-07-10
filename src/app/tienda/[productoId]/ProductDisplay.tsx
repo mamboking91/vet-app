@@ -5,7 +5,7 @@ import Image from 'next/image';
 import { Badge } from '@/components/ui/badge';
 import ProductGallery from '@/components/ui/ProductGallery';
 import AddToCartButton from './AddToCartButton';
-import { PackageCheck, PackageX } from 'lucide-react';
+import { PackageCheck, PackageX, ShoppingCart } from 'lucide-react';
 import type { ProductoCatalogo, ProductoConStock, ImagenProducto } from '@/app/dashboard/inventario/types';
 import { formatCurrency } from '@/lib/utils';
 import { cn } from '@/lib/utils';
@@ -28,17 +28,14 @@ export default function ProductDisplay({ producto, variantes, fallbackImageUrl }
   useEffect(() => {
     let newImageUrl = fallbackImageUrl;
 
-    // Prioridad 1: La imagen específica de la variante SELECCIONADA (si existe).
     if (selectedVariant?.imagen_variante_url) {
       newImageUrl = selectedVariant.imagen_variante_url;
     } 
-    // Prioridad 2: Si no, la imagen marcada como 'isPrimary' en el producto padre.
     else {
       const primaryImage = producto.imagenes?.find(img => img.isPrimary);
       if (primaryImage?.url) {
         newImageUrl = primaryImage.url;
       }
-      // Prioridad 3: Si no hay primaria, la primera imagen de la galería.
       else if (galleryImages.length > 0) {
         newImageUrl = galleryImages[0].url;
       }
@@ -59,8 +56,6 @@ export default function ProductDisplay({ producto, variantes, fallbackImageUrl }
     ? formatCurrency(selectedVariant.precio_venta * (1 + selectedVariant.porcentaje_impuesto / 100)) 
     : 'Consultar';
 
-  const stockDisponible = selectedVariant?.stock_total_actual ?? 0;
-
   return (
     <div className="bg-white">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -80,15 +75,6 @@ export default function ProductDisplay({ producto, variantes, fallbackImageUrl }
             
             <div className="mt-4 flex items-center justify-between">
               <p className="text-3xl text-gray-900">{precioFinalDisplay}</p>
-              {stockDisponible > 0 ? (
-                <Badge variant="outline" className="text-green-600 border-green-300 bg-green-50">
-                  <PackageCheck className="mr-2 h-5 w-5" /> {stockDisponible} {stockDisponible === 1 ? 'unidad disponible' : 'unidades disponibles'}
-                </Badge>
-              ) : (
-                <Badge variant="destructive">
-                  <PackageX className="mr-2 h-4 w-4" /> Agotado
-                </Badge>
-              )}
             </div>
             
             {variantes.length > 1 && (
