@@ -1,4 +1,4 @@
-// app/dashboard/inventario/page.tsx
+// src/app/dashboard/inventario/page.tsx
 import React from 'react';
 import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { Button } from "@/components/ui/button";
 import { PlusCircle } from 'lucide-react';
 import ProductosInventarioTable from './ProductosInventarioTable';
-import type { ProductoConStock } from './types'; 
+import type { ProductoConStock } from './types';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,9 +15,9 @@ export default async function InventarioPage() {
   const supabase = createServerComponentClient({ cookies: () => cookieStore });
 
   // Consulta actualizada a la VISTA 'productos_inventario_con_stock'
-  // Seleccionamos todos los campos necesarios para la tabla, incluyendo los nuevos.
+  // Seleccionamos todos los campos necesarios para la tabla.
   const { data: productosData, error } = await supabase
-    .from('productos_inventario_con_stock') 
+    .from('productos_inventario_con_stock')
     .select(
       `
         id,
@@ -31,7 +31,8 @@ export default async function InventarioPage() {
         en_tienda,
         destacado,
         stock_total_actual,
-        proxima_fecha_caducidad
+        proxima_fecha_caducidad,
+        imagenes
       `
     )
     .order('nombre', { ascending: true });

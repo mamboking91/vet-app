@@ -1,7 +1,9 @@
+// src/app/dashboard/inventario/ProductosInventarioTable.tsx
 "use client"
 
-import { useState, useTransition } from "react"
+import React, { useState, useTransition, useMemo } from "react"
 import Link from "next/link"
+import Image from "next/image"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import {
@@ -20,16 +22,15 @@ import { Badge } from "@/components/ui/badge"
 import {
   Edit3,
   Trash2,
-  Eye,
-  PlusCircle,
   Layers,
+  PlusCircle,
   Package,
   AlertTriangle,
   Euro,
   Calculator,
   BarChart2,
   Store,
-  Boxes, // Icono para representar el producto padre
+  ChevronDown,
 } from "lucide-react"
 import type { ProductoConStock } from "./types"
 import { eliminarProductoCatalogo } from "./actions"
@@ -47,11 +48,12 @@ export default function ProductosInventarioTable({ productos }: ProductosInventa
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const [isAddStockModalOpen, setIsAddStockModalOpen] = useState(false)
   const [selectedProductForStock, setSelectedProductForStock] = useState<ProductoConStock | null>(null)
+  const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
 
-  const handleEliminarProducto = async (productoPadreId: string) => {
+  const handleEliminarProducto = async (productoId: string) => {
     setDeleteError(null)
     startDeleteTransition(async () => {
-      const result = await eliminarProductoCatalogo(productoPadreId)
+      const result = await eliminarProductoCatalogo(productoId)
       if (!result.success) {
         setDeleteError(result.error?.message || "Ocurrió un error al eliminar el producto.")
       } else {
@@ -73,274 +75,133 @@ export default function ProductosInventarioTable({ productos }: ProductosInventa
     }
   }
 
+  const toggleExpandRow = (rowId: string) => {
+    setExpandedRows(prev => ({ ...prev, [rowId]: !prev[rowId] }));
+  };
+
+  const productosAgrupados = useMemo(() => {
+    if (!productos) return [];
+    const agrupados: Record<string, ProductoConStock[]> = {};
+    productos.forEach(p => {
+        if (!agrupados[p.producto_padre_id]) {
+            agrupados[p.producto_padre_id] = [];
+        }
+        agrupados[p.producto_padre_id].push(p);
+    });
+    return Object.values(agrupados);
+  }, [productos]);
+
+
   if (!productos || productos.length === 0) {
     return (
-      <div className="border-dashed border-2 border-gray-300 rounded-lg">
-        <div className="flex flex-col items-center justify-center py-16">
-          <div className="rounded-full bg-gradient-to-br from-blue-100 to-indigo-100 p-6 mb-6">
-            <Package className="h-12 w-12 text-blue-600" />
-          </div>
-          <h3 className="text-xl font-bold text-gray-900 mb-3">No hay productos en el inventario</h3>
-          <p className="text-gray-600 text-center max-w-md mb-6 leading-relaxed">
-            Comienza agregando el primer producto para gestionar tu inventario.
-          </p>
-          <Button
-            asChild
-            className="bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white shadow-lg hover:shadow-xl transition-all duration-200 px-6 py-3"
-          >
-            <Link href="/dashboard/inventario/nuevo">
-              <PlusCircle className="mr-2 h-5 w-5" />
-              Añadir Primer Producto
-            </Link>
-          </Button>
-        </div>
-      </div>
+      <div className="border-dashed border-2 border-gray-300 rounded-lg"><div className="flex flex-col items-center justify-center py-16"><div className="rounded-full bg-gradient-to-br from-blue-100 to-indigo-100 p-6 mb-6"><Package className="h-12 w-12 text-blue-600" /></div><h3 className="text-xl font-bold text-gray-900 mb-3">No hay productos en el inventario</h3><p className="text-gray-600 text-center max-w-md mb-6 leading-relaxed">Comienza agregando el primer producto para gestionar tu inventario.</p><Button asChild className="bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white shadow-lg hover:shadow-xl transition-all duration-200 px-6 py-3"><Link href="/dashboard/inventario/nuevo"><PlusCircle className="mr-2 h-5 w-5" />Añadir Primer Producto</Link></Button></div></div>
     )
   }
 
   return (
     <>
       {deleteError && (
-        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
-          <AlertTriangle className="h-5 w-5 text-red-500 mt-0.5 flex-shrink-0" />
-          <div>
-            <h4 className="text-red-800 font-medium">Error al eliminar producto</h4>
-            <p className="text-red-700 text-sm mt-1">{deleteError}</p>
-          </div>
-        </div>
+        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3"><AlertTriangle className="h-5 w-5 text-red-500 mt-0.5 flex-shrink-0" /><div><h4 className="text-red-800 font-medium">Error al eliminar producto</h4><p className="text-red-700 text-sm mt-1">{deleteError}</p></div></div>
       )}
 
       <div className="shadow-lg border-0 bg-white/95 backdrop-blur-sm rounded-lg overflow-hidden">
-        {/* Encabezados de tabla */}
         <div className="bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100 border-b-2 border-blue-200 grid grid-cols-12 gap-4 py-3 px-4">
-          <div className="col-span-3 font-bold text-gray-800">
-            <div className="flex items-center gap-2">
-              <Package className="h-4 w-4 text-blue-600" />
-              Producto / Variante
-            </div>
-          </div>
-          <div className="col-span-1 font-bold text-gray-800 text-center">
-            <div className="flex flex-col items-center gap-1">
-              <BarChart2 className="h-4 w-4 text-green-600 flex-shrink-0" />
-              <span className="text-xs">Stock</span>
-            </div>
-          </div>
-          <div className="col-span-1 hidden md:block font-bold text-gray-800 text-center">
-            {/* El stock mínimo se define a nivel de producto padre, no de variante. Se podría mostrar, pero por ahora se omite para simplificar. */}
-          </div>
-          <div className="col-span-2 font-bold text-gray-800 text-center">
-            <div className="flex flex-col items-center gap-1">
-              <Euro className="h-4 w-4 text-blue-600 flex-shrink-0" />
-              <span className="text-xs">Precio Base</span>
-            </div>
-          </div>
-          <div className="col-span-1 font-bold text-gray-800 text-center">
-            <div className="flex flex-col items-center gap-1">
-              <Calculator className="h-4 w-4 text-purple-600 flex-shrink-0" />
-              <span className="text-xs">% IGIC</span>
-            </div>
-          </div>
-          <div className="col-span-2 font-bold text-gray-800 text-center">
-            <div className="flex flex-col items-center gap-1">
-              <Euro className="h-4 w-4 text-indigo-600 flex-shrink-0" />
-              <span className="text-xs">Precio Final</span>
-            </div>
-          </div>
-          <div className="col-span-2 text-right font-bold text-gray-800">Acciones</div>
+          <div className="col-span-4 font-bold text-gray-800 flex items-center gap-2"><Package className="h-4 w-4 text-blue-600" />Producto</div>
+          <div className="col-span-2 font-bold text-gray-800 text-center flex flex-col items-center gap-1"><BarChart2 className="h-4 w-4 text-green-600" /><span className="text-xs">Stock Total</span></div>
+          <div className="col-span-2 font-bold text-gray-800 text-center flex flex-col items-center gap-1"><Store className="h-4 w-4" /><span className="text-xs">En Tienda</span></div>
+          <div className="col-span-4 text-right font-bold text-gray-800">Acciones</div>
         </div>
 
-        {/* Filas de datos */}
         <div>
-          {productos.map((producto, index) => {
-            const precioBase = producto.precio_venta ?? 0
-            const impuestoPorcentaje = producto.porcentaje_impuesto ?? 0
-            const montoImpuesto = precioBase * (impuestoPorcentaje / 100)
-            const precioFinal = precioBase + montoImpuesto
+          {productosAgrupados.map((grupoVariantes, index) => {
+            const productoPadre = grupoVariantes[0];
+            const nombrePadre = productoPadre.nombre.split(' - ')[0];
+            const stockTotalGrupo = grupoVariantes.reduce((sum, v) => sum + (v.stock_total_actual || 0), 0);
+            const isExpanded = expandedRows[productoPadre.producto_padre_id];
+            const hasMultipleVariants = grupoVariantes.length > 1;
 
             return (
-              <div
-                key={producto.id} // El ID de la variante es una clave única para la fila
-                className={`
-                  grid grid-cols-12 gap-4 py-3 px-4
-                  hover:bg-gradient-to-r hover:from-blue-50/50 hover:to-indigo-50/50 
-                  transition-all duration-200 border-b border-gray-100
-                  ${index % 2 === 0 ? "bg-white" : "bg-gray-50/30"}
-                `}
-              >
-                <div className="col-span-3">
-                  {/* El enlace principal ahora apunta al producto padre */}
-                  <Link
-                    href={`/dashboard/inventario/${producto.producto_padre_id}`}
-                    className="flex items-center gap-3 hover:text-blue-700 transition-colors"
-                  >
-                    <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-semibold text-sm shadow-md">
-                      <Boxes className="h-5 w-5"/>
-                    </div>
-                    <div>
-                      <div className="font-semibold text-gray-900">{producto.nombre}</div>
-                      <div className="flex items-center gap-2 mt-1">
-                        <div className="text-xs text-gray-500">SKU: {producto.codigo_producto || 'N/A'}</div>
-                        {producto.requiere_lote && (
-                          <Badge variant="outline" className="text-xs bg-blue-100 text-blue-700 border-blue-300">
-                            Lotes
-                          </Badge>
-                        )}
-                        {producto.en_tienda && (
-                            <Badge variant="outline" className="text-xs bg-pink-100 text-pink-700 border-pink-300">
-                                <Store className="h-3 w-3 mr-1" />
-                                En tienda
-                            </Badge>
-                        )}
-                      </div>
-                    </div>
-                  </Link>
-                </div>
-
-                <div className="col-span-1 flex items-center justify-center">
-                    <Badge variant={producto.stock_total_actual > 0 ? "default" : "destructive"}>
-                      {producto.stock_total_actual}
-                    </Badge>
-                </div>
-                
-                <div className="col-span-1 hidden md:flex items-center justify-center">
-                  {/* Columna vacía por ahora */}
-                </div>
-
-                <div className="col-span-2 flex items-center justify-center">
-                  <span className="text-sm font-medium text-gray-800">{formatCurrency(precioBase)}</span>
-                </div>
-
-                <div className="col-span-1 flex items-center justify-center">
-                  <Badge variant="outline" className="bg-purple-100 text-purple-700 border-purple-300">
-                    {impuestoPorcentaje}%
-                  </Badge>
-                </div>
-
-                <div className="col-span-2 flex items-center justify-center">
-                  <span className="text-sm font-bold text-indigo-700">{formatCurrency(precioFinal)}</span>
-                </div>
-
-                <div className="col-span-2 flex items-center justify-end gap-1">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    title="Añadir Stock a esta Variante"
-                    onClick={() => handleOpenAddStockModal(producto)}
-                    className="h-8 w-8 bg-green-50 text-green-700 hover:bg-green-100 hover:text-green-800 rounded-full"
-                  >
-                    <Layers className="h-4 w-4" />
-                  </Button>
-
-                  <Button
-                    asChild
-                    variant="ghost"
-                    size="icon"
-                    title="Gestionar Producto Padre"
-                    className="h-8 w-8 bg-blue-50 text-blue-700 hover:bg-blue-100 hover:text-blue-800 rounded-full"
-                  >
-                    <Link href={`/dashboard/inventario/${producto.producto_padre_id}`}>
-                      <Eye className="h-4 w-4" />
-                    </Link>
-                  </Button>
-
-                  <Button
-                    asChild
-                    variant="ghost"
-                    size="icon"
-                    title="Editar Producto Padre (Catálogo)"
-                    className="h-8 w-8 bg-amber-50 text-amber-700 hover:bg-amber-100 hover:text-amber-800 rounded-full"
-                  >
-                    <Link href={`/dashboard/inventario/${producto.producto_padre_id}/editar`}>
-                      <Edit3 className="h-4 w-4" />
-                    </Link>
-                  </Button>
-
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 bg-red-50 text-red-700 hover:bg-red-100 hover:text-red-800 rounded-full"
-                        title="Eliminar Producto Padre y todas sus variantes"
-                        disabled={isDeleting}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent className="max-w-md">
-                      <AlertDialogHeader>
-                        <div className="flex items-center gap-3 mb-2">
-                          <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
-                            <AlertTriangle className="h-6 w-6 text-red-600" />
-                          </div>
-                          <div>
-                            <AlertDialogTitle className="text-lg font-semibold text-gray-900">
-                              Confirmar eliminación
-                            </AlertDialogTitle>
-                          </div>
+                <div key={productoPadre.producto_padre_id} className="border-b border-gray-100 last:border-b-0">
+                    <div className={cn("grid grid-cols-12 gap-4 py-3 px-4 items-center hover:bg-gradient-to-r hover:from-blue-50/50 hover:to-indigo-50/50 transition-all duration-200", index % 2 === 0 ? "bg-white" : "bg-gray-50/30")}>
+                        <div className="col-span-4 flex items-center gap-3">
+                            <Image
+                                src={productoPadre.imagenes?.[0]?.url || 'https://placehold.co/100x100/e2e8f0/e2e8f0.png?text=N/A'}
+                                alt={nombrePadre}
+                                width={48}
+                                height={48}
+                                className="rounded-lg object-cover h-12 w-12 shadow-sm flex-shrink-0"
+                            />
+                            <div>
+                                <Link href={`/dashboard/inventario/${productoPadre.producto_padre_id}`} className="font-semibold text-gray-900 hover:text-blue-700">{nombrePadre}</Link>
+                                <div className="flex items-center gap-2 mt-1">
+                                  {hasMultipleVariants ? <Badge variant="outline">{grupoVariantes.length} variantes</Badge> : <Badge variant="outline">Simple</Badge>}
+                                </div>
+                            </div>
                         </div>
-                        <AlertDialogDescription className="text-gray-600 leading-relaxed">
-                          Esta acción <strong>no se puede deshacer</strong>. Se eliminará permanentemente el producto
-                          <span className="font-semibold text-gray-900"> "{producto.nombre.split(' - ')[0]}"</span> y <strong>TODAS</strong> sus variantes asociadas.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter className="gap-2">
-                        <AlertDialogCancel
-                          disabled={isDeleting}
-                          className="bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-300"
-                        >
-                          Cancelar
-                        </AlertDialogCancel>
-                        <AlertDialogAction
-                          onClick={() => handleEliminarProducto(producto.producto_padre_id)}
-                          disabled={isDeleting}
-                          className="bg-red-600 hover:bg-red-700 text-white shadow-md hover:shadow-lg transition-all duration-200"
-                        >
-                          {isDeleting ? (
-                            <div className="flex items-center gap-2">
-                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                              Eliminando...
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-2">
-                              <Trash2 className="h-4 w-4" />
-                              Sí, eliminar
-                            </div>
-                          )}
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
+                        <div className="col-span-2 text-center"><Badge variant={stockTotalGrupo > 0 ? "default" : "destructive"}>{stockTotalGrupo}</Badge></div>
+                        <div className="col-span-2 text-center">
+                          <Badge variant={productoPadre.en_tienda ? "default" : "secondary"}>{productoPadre.en_tienda ? 'Sí' : 'No'}</Badge>
+                        </div>
+                        <div className="col-span-4 flex items-center justify-end gap-1">
+                            <Button variant="ghost" size="icon" title={isExpanded ? "Ocultar variantes" : "Mostrar variantes"} onClick={() => toggleExpandRow(productoPadre.producto_padre_id)} className="h-8 w-8 rounded-full">
+                                <ChevronDown className={`h-5 w-5 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                            </Button>
+                            <Button asChild variant="ghost" size="icon" title="Editar Producto" className="h-8 w-8 rounded-full"><Link href={`/dashboard/inventario/${productoPadre.producto_padre_id}/editar`}><Edit3 className="h-4 w-4" /></Link></Button>
+                            <AlertDialog>
+                                <AlertDialogTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8 text-red-600 hover:bg-red-100 hover:text-red-700 rounded-full" title="Eliminar Producto" disabled={isDeleting}><Trash2 className="h-4 w-4" /></Button></AlertDialogTrigger>
+                                <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>¿Confirmar eliminación?</AlertDialogTitle><AlertDialogDescription>Se eliminará permanentemente "{nombrePadre}" y TODAS sus variantes.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={() => handleEliminarProducto(productoPadre.producto_padre_id)}>{isDeleting ? 'Eliminando...' : 'Sí, eliminar'}</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
+                            </AlertDialog>
+                        </div>
+                    </div>
+                    {isExpanded && (
+                      <div className="p-4 bg-slate-50 dark:bg-slate-800/50">
+                        <div className="border rounded-md overflow-hidden">
+                          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700 text-sm">
+                            <thead className="bg-gray-100 dark:bg-slate-800 text-xs">
+                              <tr>
+                                <th className="px-4 py-2 text-left font-medium text-muted-foreground">Variante</th>
+                                <th className="px-4 py-2 text-center font-medium text-muted-foreground">Stock</th>
+                                <th className="px-4 py-2 text-center font-medium text-muted-foreground">Precio Final</th>
+                                <th className="px-4 py-2 text-right font-medium text-muted-foreground">Acciones</th>
+                              </tr>
+                            </thead>
+                            <tbody className="bg-white dark:bg-slate-900 divide-y divide-gray-200 dark:divide-gray-700">
+                              {grupoVariantes.map(variante => {
+                                const precioFinal = (variante.precio_venta || 0) * (1 + (variante.porcentaje_impuesto || 0) / 100);
+                                return (
+                                  <tr key={variante.id}>
+                                      <td className="px-4 py-2 whitespace-nowrap font-medium">{variante.nombre.split(' - ')[1] || 'Variante única'}</td>
+                                      <td className="px-4 py-2 text-center font-medium">{variante.stock_total_actual}</td>
+                                      <td className="px-4 py-2 text-center font-semibold text-indigo-600">{formatCurrency(precioFinal)}</td>
+                                      <td className="px-4 py-2 text-right">
+                                        <Button variant="ghost" size="sm" onClick={() => handleOpenAddStockModal(variante)}><Layers className="h-3 w-3 mr-2" /> Stock</Button>
+                                        <Button variant="ghost" size="sm" asChild><Link href={`/dashboard/inventario/${variante.producto_padre_id}/variantes/${variante.id}/editar`}><Edit3 className="h-3 w-3 mr-2" /> Editar</Link></Button>
+                                      </td>
+                                  </tr>
+                                )
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
                 </div>
-              </div>
             )
           })}
         </div>
-
-        <div className="py-6 text-gray-600 bg-gray-50/50 text-center">
-          <div className="flex items-center justify-center gap-2">
-            <Package className="h-4 w-4" />
-            Lista de todas las variantes de productos en inventario
-          </div>
-        </div>
       </div>
 
-      {/* El modal para añadir stock ahora recibe una variante (ProductoConStock) */}
       {selectedProductForStock && (
         <Dialog open={isAddStockModalOpen} onOpenChange={setIsAddStockModalOpen}>
-          <DialogContent className="sm:max-w-lg">
+          <DialogContent>
             <DialogHeader>
-              <DialogTitle className="flex items-center gap-2 text-xl">
-                <Layers className="h-5 w-5 text-green-600" />
-                Añadir Stock a Variante: {selectedProductForStock.nombre}
-              </DialogTitle>
-              <DialogDescription className="pt-2">
+              <DialogTitle>Añadir Stock: {selectedProductForStock.nombre}</DialogTitle>
+              <DialogDescription>
                 {selectedProductForStock.requiere_lote
-                  ? "Esta variante se gestiona por lotes. Vas a registrar una nueva entrada de lote."
-                  : "Esta variante no se gestiona por lotes. Se añadirá stock directamente a la variante."}
+                  ? "Este producto requiere lote. Registra una nueva entrada."
+                  : "Añade stock directamente a esta variante."}
               </DialogDescription>
             </DialogHeader>
-            {/* El componente AñadirStockForm necesitará ser adaptado para recibir el ID de la variante */}
             <AñadirStockForm
               producto={selectedProductForStock}
               onFormSubmit={() => handleAddStockModalClose(true)}

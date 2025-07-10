@@ -79,7 +79,7 @@ export type ProductoVariante = {
 
 // Tipo para un lote, ahora enlazado a una variante
 export type LoteDeProducto = {
-  id: string; 
+  id: string;
   variante_id: string; // Clave foránea a producto_variantes.id
   numero_lote: string;
   stock_lote: number;
@@ -94,7 +94,7 @@ export type MovimientoInventario = {
   variante_id: string | null; // Clave foránea a producto_variantes.id
   producto_id: string; // Mantenemos el ID del producto padre por si es necesario
   tipo_movimiento: TipoMovimientoInventarioValue;
-  cantidad: number; 
+  cantidad: number;
   fecha_movimiento: string;
   cita_id: string | null;
   notas: string | null;
@@ -113,11 +113,9 @@ export type ProductoConStock = {
     requiere_lote: boolean;
     en_tienda: boolean;
     destacado: boolean;
-    // --- INICIO DE LA CORRECCIÓN ---
-    imagen_producto_principal: string | null; // Columna renombrada desde `imagen_principal`
-    imagen_variante_url: string | null;      // Nueva columna para la imagen específica de la variante
-    atributos?: Record<string, any> | null;  // Nueva columna para los atributos de la variante
-    // --- FIN DE LA CORRECCIÓN ---
+    imagen_producto_principal: string | null;
+    imagen_variante_url: string | null;
+    atributos?: Record<string, any> | null;
     imagenes: ImagenProducto[] | null; // Imágenes del producto padre
     categorias_tienda: { nombre: string }[] | null;
     stock_total_actual: number;
@@ -134,12 +132,12 @@ export type ProductoCatalogoFormData = {
   tipo: 'simple' | 'variable';
   descripcion: string;
   codigo_producto: string;
-  unidad: UnidadMedidaInventarioValue | ''; 
-  stock_minimo: string; 
+  unidad: UnidadMedidaInventarioValue | '';
+  stock_minimo: string;
   precio_compra: string;
   precio_venta: string;
-  porcentaje_impuesto: ImpuestoItemValue | string; 
-  requiere_lote: boolean; 
+  porcentaje_impuesto: ImpuestoItemValue | string;
+  requiere_lote: boolean;
   notas_internas: string;
   stock_no_lote_valor?: string;
   en_tienda: boolean;

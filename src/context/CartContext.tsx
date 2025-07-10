@@ -1,19 +1,15 @@
 "use client";
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-// CORRECCIÓN: Importamos el tipo correcto para las variantes
 import type { ProductoConStock } from '@/app/dashboard/inventario/types';
 import type { CodigoDescuento } from '@/app/dashboard/descuentos/types';
 
-// CORRECCIÓN: El item del carrito ahora es una variante con stock
 export interface CartItem extends ProductoConStock {
   quantity: number;
 }
 
-// Define la estructura del contexto del carrito
 interface CartContextType {
   cart: CartItem[];
-  // CORRECCIÓN: La función ahora espera un ProductoConStock
   addToCart: (product: ProductoConStock, quantity: number) => void;
   removeFromCart: (productId: string) => void;
   updateQuantity: (productId: string, quantity: number) => void;
@@ -27,10 +23,8 @@ interface CartContextType {
   montoDescuento: number;
 }
 
-// Crea el contexto con un valor por defecto
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
-// Hook personalizado para usar el contexto del carrito
 export function useCart() {
   const context = useContext(CartContext);
   if (context === undefined) {
@@ -39,12 +33,10 @@ export function useCart() {
   return context;
 }
 
-// Proveedor del contexto que envuelve la aplicación
 export function CartProvider({ children }: { children: ReactNode }) {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [descuentoAplicado, setDescuentoAplicado] = useState<CodigoDescuento | null>(null);
 
-  // Cargar el carrito y el descuento desde localStorage al iniciar
   useEffect(() => {
     try {
       const storedCart = localStorage.getItem('shoppingCart');
@@ -60,7 +52,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // Guardar el carrito y el descuento en localStorage cada vez que cambien
   useEffect(() => {
     localStorage.setItem('shoppingCart', JSON.stringify(cart));
     if (descuentoAplicado) {
@@ -70,10 +61,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
     }
   }, [cart, descuentoAplicado]);
 
-  // --- LÓGICA DEL CARRITO ---
   const addToCart = (product: ProductoConStock, quantity: number) => {
     setCart(prevCart => {
-      // El 'id' aquí es el ID de la variante, que es único.
       const existingItem = prevCart.find(item => item.id === product.id);
       if (existingItem) {
         return prevCart.map(item =>
@@ -96,10 +85,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   const clearCart = () => {
     setCart([]);
-    removerDescuento(); // También limpiar el descuento al vaciar el carrito
+    removerDescuento();
   };
   
-  // --- LÓGICA DE DESCUENTOS ---
   const aplicarDescuento = (codigo: CodigoDescuento) => {
     setDescuentoAplicado(codigo);
   };
@@ -108,9 +96,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
     setDescuentoAplicado(null);
   };
   
-  // --- CÁLCULOS ---
-  const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
-
   const subtotal = cart.reduce((sum, item) => {
     const precioBase = Number(item.precio_venta) || 0;
     const impuesto = Number(item.porcentaje_impuesto) || 0;
@@ -123,7 +108,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     if (subtotal >= descuentoAplicado.compra_minima) {
       if (descuentoAplicado.tipo_descuento === 'porcentaje') {
         montoDescuento = (subtotal * descuentoAplicado.valor) / 100;
-      } else { // tipo 'fijo'
+      } else {
         montoDescuento = descuentoAplicado.valor;
       }
       montoDescuento = Math.min(montoDescuento, subtotal);
@@ -133,6 +118,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
   }
 
   const total = subtotal - montoDescuento;
+  const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
 
   const value = {
     cart,

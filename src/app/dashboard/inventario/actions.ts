@@ -253,7 +253,6 @@ export async function actualizarProductoCatalogo(id: string, formData: FormData)
         return { success: false, error: { message: `Error de base de datos al actualizar producto: ${dbError.message}` } };
     }
     
-    // --- INICIO DE LA CORRECCIÓN 2.1: PROPAGAR IMAGEN PRINCIPAL A VARIANTES ---
     const primaryImage = finalImages.find(img => img.isPrimary);
     const primaryImageUrl = primaryImage ? primaryImage.url : (finalImages.length > 0 ? finalImages[0].url : null);
     
@@ -263,10 +262,7 @@ export async function actualizarProductoCatalogo(id: string, formData: FormData)
         .update({ imagen_principal: primaryImageUrl })
         .eq('producto_id', id);
     }
-    // --- FIN DE LA CORRECCIÓN 2.1 ---
 
-
-    // --- INICIO DE LA CORRECCIÓN 3: GUARDAR DATOS DE PRODUCTO SIMPLE ---
     if (tipoProducto === 'simple') {
       const { data: varianteSimple, error: errVariante } = await supabase
         .from('producto_variantes')
@@ -286,8 +282,6 @@ export async function actualizarProductoCatalogo(id: string, formData: FormData)
           .eq('id', varianteSimple.id);
       }
     }
-    // --- FIN DE LA CORRECCIÓN 3 ---
-
 
     const variantsDataStr = formData.get('variants_data') as string;
     if (variantsDataStr) {
@@ -456,25 +450,14 @@ export async function registrarMovimientoStock(varianteId: string, loteId: strin
             if (nuevoStockLote < 0) {
                 return { success: false, error: { message: `No hay suficiente stock en el lote. Stock actual: ${lote.stock_lote}.` } };
             }
-
-            const { error: updateLoteError } = await supabase
-                .from('lotes_producto')
-                .update({ stock_lote: nuevoStockLote })
-                .eq('id', loteId);
-
-            if (updateLoteError) throw updateLoteError;
+            await supabase.from('lotes_producto').update({ stock_lote: nuevoStockLote }).eq('id', loteId);
 
         } else {
              const nuevoStockVariante = (variante.stock_actual || 0) + cantidadAjuste;
              if (nuevoStockVariante < 0) {
                  return { success: false, error: { message: `No hay suficiente stock para el producto. Stock actual: ${variante.stock_actual}.` } };
              }
-             const { error: updateVarianteError } = await supabase
-                .from('producto_variantes')
-                .update({ stock_actual: nuevoStockVariante })
-                .eq('id', varianteId);
-
-             if (updateVarianteError) throw updateVarianteError;
+             await supabase.from('producto_variantes').update({ stock_actual: nuevoStockVariante }).eq('id', varianteId);
         }
 
         const { error: movimientoError } = await supabase.from('movimientos_inventario').insert({
@@ -539,7 +522,7 @@ export async function registrarEntradaLote(productoId: string, formData: FormDat
         });
 
         if (insertError) {
-            if (insertError.code === '23505') { // Error de violación de unicidad
+            if (insertError.code === '23505') {
                 return { success: false, error: { message: `El número de lote "${numero_lote}" ya existe para este producto.` } };
             }
             throw insertError;
@@ -649,57 +632,16 @@ export async function agregarStock(varianteId: string, formData: FormData) {
   const { cantidad, numero_lote, fecha_entrada, fecha_caducidad } = validatedFields.data;
 
   try {
-      if (variante.producto_padre.requiere_lote) {
-        if (!numero_lote) {
-            return { success: false, error: { message: "El número de lote es requerido.", errors: { numero_lote: ["Campo requerido"] } } };
-        }
-        const { data: loteExistente } = await supabase
-            .from('lotes_producto')
-            .select('id, stock_lote')
-            .eq('variante_id', varianteId)
-            .eq('numero_lote', numero_lote)
-            .maybeSingle();
-
-        let loteId: string;
-        if (loteExistente) {
-            loteId = loteExistente.id;
-            const nuevoStock = loteExistente.stock_lote + cantidad;
-            await supabase.from('lotes_producto').update({ stock_lote: nuevoStock }).eq('id', loteId);
-        } else {
-            const { data: nuevoLote, error: insertError } = await supabase.from('lotes_producto').insert({
-            variante_id: varianteId,
-            numero_lote: numero_lote,
-            stock_lote: cantidad,
-            fecha_entrada: fecha_entrada || new Date().toISOString(),
-            fecha_caducidad: fecha_caducidad || null,
-            esta_activo: true
-            }).select('id').single();
-            if (insertError || !nuevoLote) throw insertError;
-            loteId = nuevoLote.id;
-        }
-
-        await supabase.from('movimientos_inventario').insert({
-            variante_id: varianteId,
-            producto_id: variante.producto_padre.id,
-            lote_id: loteId,
-            tipo_movimiento: 'Entrada Compra',
-            cantidad: cantidad,
-            notas: `Entrada de stock para lote ${numero_lote}.`
-        });
-      } else {
-          const stockActual = variante.stock_actual || 0;
-          const nuevoStock = stockActual + cantidad;
-          await supabase.from('producto_variantes').update({ stock_actual: nuevoStock }).eq('id', varianteId);
-
-          await supabase.from('movimientos_inventario').insert({
-            variante_id: varianteId,
-            producto_id: variante.producto_padre.id,
-            lote_id: null,
-            tipo_movimiento: 'Entrada Compra',
-            cantidad: cantidad,
-            notas: 'Entrada de stock para producto sin lotes.'
-          });
-      }
+      // La lógica ahora solo inserta el movimiento. La base de datos se encarga del resto.
+      await supabase.from('movimientos_inventario').insert({
+        variante_id: varianteId,
+        producto_id: variante.producto_padre.id,
+        lote_id: null, // Asumimos que esta función es para productos sin lote por ahora
+        tipo_movimiento: 'Entrada Compra',
+        cantidad: cantidad,
+        notas: 'Entrada de stock para producto sin lotes.'
+      });
+      
     revalidatePath(`/dashboard/inventario/${variante.producto_padre.id}`);
     revalidatePath('/dashboard/inventario');
     return { success: true };
@@ -708,6 +650,7 @@ export async function agregarStock(varianteId: string, formData: FormData) {
     return { success: false, error: { message: `Error de base de datos: ${error.message}` } };
   }
 }
+
 
 export async function actualizarDatosLote(loteId: string, varianteId: string, formData: FormData) {
     try {

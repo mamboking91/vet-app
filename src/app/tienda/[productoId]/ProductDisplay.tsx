@@ -21,13 +21,10 @@ export default function ProductDisplay({ producto, variantes, fallbackImageUrl }
   const [selectedVariant, setSelectedVariant] = useState<ProductoConStock | null>(variantes?.[0] || null);
   const [mainImageUrl, setMainImageUrl] = useState<string | null>(null);
 
-  // --- INICIO DE LA CORRECCIÓN ---
-  // La galería de imágenes ahora se basa EXCLUSIVAMENTE en las imágenes del producto padre.
   const galleryImages = useMemo(() => {
     return producto.imagenes?.sort((a, b) => (a.order ?? 0) - (b.order ?? 0)) || [];
   }, [producto.imagenes]);
 
-  // useEffect para actualizar la imagen principal de forma inteligente
   useEffect(() => {
     let newImageUrl = fallbackImageUrl;
 
@@ -49,7 +46,6 @@ export default function ProductDisplay({ producto, variantes, fallbackImageUrl }
     
     setMainImageUrl(newImageUrl);
   }, [selectedVariant, producto.imagenes, galleryImages, fallbackImageUrl]);
-  // --- FIN DE LA CORRECCIÓN ---
 
   const handleSelectVariant = (variant: ProductoConStock) => {
     setSelectedVariant(variant);
@@ -71,7 +67,7 @@ export default function ProductDisplay({ producto, variantes, fallbackImageUrl }
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
           <div>
             <ProductGallery 
-              images={galleryImages} // Pasamos solo las imágenes de la galería
+              images={galleryImages}
               fallbackImageUrl={fallbackImageUrl}
               productName={producto.nombre}
               mainImageUrl={mainImageUrl}
