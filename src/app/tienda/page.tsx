@@ -10,6 +10,26 @@ import { formatCurrency } from '@/lib/utils';
 import type { ProductoConStock } from '@/app/dashboard/inventario/types';
 import FiltrosTienda from './FiltrosTienda';
 
+const GRUPOS_CATEGORIAS: { [key: string]: string[] } = {
+  'Alimentación': ['pienso', 'comida', 'húmeda', 'snack', 'premio', 'alimento', 'nutrición', 'lenda'],
+  'Salud y Bienestar': ['salud', 'antiparasitario', 'suplemento', 'vitamina', 'dental', 'medicamento'],
+  'Paseo': ['arnés', 'arnes', 'collar', 'correa'],
+  'Descanso': ['cama', 'colchón', 'cesta'],
+  'Juguetes': ['juguete', 'pelota', 'mordedor', 'rascador', 'interactivo'],
+  'Accesorios': ['accesorio', 'comedero', 'bebedero', 'transportín', 'ropa'],
+  'Higiene': ['higiene', 'arena', 'champú', 'cepillo', 'toallita', 'limpieza', 'arenero', 'empapador'],
+};
+
+const getGrupoPrincipal = (nombreProducto: string): string => {
+  const nombreLower = nombreProducto.toLowerCase();
+  for (const grupo in GRUPOS_CATEGORIAS) {
+    if (GRUPOS_CATEGORIAS[grupo].some(keyword => nombreLower.includes(keyword))) {
+      return grupo;
+    }
+  }
+  return 'Otros';
+};
+
 function ProductCard({ product }: { product: any }) {
   const precioFinalDisplay = product.precio_venta != null ? formatCurrency(product.precio_venta * (1 + product.porcentaje_impuesto / 100)) : 'Consultar';
   const nombreProducto = product.nombre.split(' - ')[0];
@@ -53,44 +73,41 @@ export default async function TiendaPage({ searchParams }: TiendaPageProps) {
   const searchQuery = searchParams?.q;
   const categoryFilter = searchParams?.categoria;
 
-  let query = supabase
+  // --- INICIO DE LA CORRECCIÓN ---
+  const { data: allProducts, error: allProductsError } = await supabase
     .from('productos_inventario_con_stock')
-    .select('*') 
+    .select('*')
     .eq('en_tienda', true)
-    // --- CORRECCIÓN AQUÍ: Se elimina el filtro de stock ---
-    // .gt('stock_total_actual', 0) 
     .order('nombre', { ascending: true });
 
+  if (allProductsError) {
+    console.error("Error fetching all store products:", allProductsError);
+  }
+
+  // 1. Clasificar cada producto y crear la lista de grupos existentes.
+  const gruposExistentes = new Set<string>();
+  const productosClasificados = (allProducts || []).map(product => {
+    const grupo = getGrupoPrincipal(product.nombre);
+    gruposExistentes.add(grupo);
+    return { ...product, grupo };
+  });
+
+  // 2. Filtrar los productos según los parámetros de la URL.
+  let filteredProducts = productosClasificados;
+
   if (searchQuery) {
-    query = query.ilike('nombre', `%${searchQuery}%`);
+    filteredProducts = filteredProducts.filter(p => p.nombre.toLowerCase().includes(searchQuery.toLowerCase()));
   }
 
   if (categoryFilter) {
-    query = query.contains('categorias_tienda', JSON.stringify([{ nombre: categoryFilter }]));
-  }
-
-  const { data: allVariants, error: productsError } = await query;
-
-  if (productsError) {
-    console.error("Error fetching store products:", productsError);
+    filteredProducts = filteredProducts.filter(p => p.grupo === categoryFilter);
   }
 
   const uniqueProducts = Array.from(
-    new Map(allVariants?.map(variant => [variant.producto_padre_id, variant])).values()
+    new Map(filteredProducts.map(variant => [variant.producto_padre_id, variant])).values()
   );
+  // --- FIN DE LA CORRECCIÓN ---
 
-  const { data: allProductsResult } = await supabase
-    .from('productos_catalogo')
-    .select('categorias_tienda')
-    .eq('en_tienda', true);
-  
-  const allCategories = allProductsResult?.flatMap(
-    (p: { categorias_tienda: { nombre: string }[] | null }) => 
-      p.categorias_tienda?.map((c: { nombre: string }) => c.nombre) || []
-  ) || [];
-  
-  const uniqueCategories = [...new Set(allCategories.filter(Boolean))].sort();
-  
   return (
     <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-12">
       <div className="text-center mb-10">
@@ -100,13 +117,13 @@ export default async function TiendaPage({ searchParams }: TiendaPageProps) {
         </p>
       </div>
       
-      <FiltrosTienda categorias={uniqueCategories} />
+      <FiltrosTienda categorias={[...gruposExistentes].sort()} />
 
       {uniqueProducts && uniqueProducts.length > 0 ? (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-8 mt-10">
           {uniqueProducts.map(product => (
             <ProductCard 
-              key={(product as any).id}
+              key={(product as any).producto_padre_id}
               product={product}
             />
           ))}

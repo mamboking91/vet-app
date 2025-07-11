@@ -1,6 +1,7 @@
+// src/app/tienda/FiltrosTienda.tsx
 "use client";
 
-import React, { useState, useEffect, useTransition } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -8,6 +9,7 @@ import SearchInput from '@/components/ui/SearchInput';
 import { Filter, X } from 'lucide-react';
 
 interface FiltrosTiendaProps {
+  // Ahora recibe un array simple de strings
   categorias: string[];
 }
 
@@ -19,23 +21,26 @@ export default function FiltrosTienda({ categorias }: FiltrosTiendaProps) {
   const [selectedCategory, setSelectedCategory] = useState(searchParams.get('categoria') || '');
 
   useEffect(() => {
-    // Sincronizar el estado si los parámetros de la URL cambian (ej. al usar el botón "Atrás" del navegador)
     setSelectedCategory(searchParams.get('categoria') || '');
   }, [searchParams]);
 
   const handleCategoryChange = (category: string) => {
     const params = new URLSearchParams(searchParams.toString());
+    
+    // --- INICIO DE LA CORRECCIÓN ---
+    // La lógica se simplifica enormemente.
     if (category && category !== 'todas') {
       params.set('categoria', category);
     } else {
       params.delete('categoria');
     }
-    // Navegar a la nueva URL con los parámetros actualizados
+    // --- FIN DE LA CORRECCIÓN ---
+    
     router.push(`${pathname}?${params.toString()}`);
   };
 
   const clearFilters = () => {
-    router.push(pathname); // Navegar a la URL sin parámetros
+    router.push(pathname);
   };
   
   const hasActiveFilters = searchParams.get('q') || searchParams.get('categoria');
@@ -55,10 +60,13 @@ export default function FiltrosTienda({ categorias }: FiltrosTiendaProps) {
             <SelectValue placeholder="Filtrar por categoría..." />
           </SelectTrigger>
           <SelectContent>
+            {/* --- INICIO DE LA CORRECCIÓN --- */}
+            {/* Se renderiza una lista simple de categorías principales */}
             <SelectItem value="todas">Todas las categorías</SelectItem>
             {categorias.map(cat => (
               <SelectItem key={cat} value={cat}>{cat}</SelectItem>
             ))}
+            {/* --- FIN DE LA CORRECCIÓN --- */}
           </SelectContent>
         </Select>
         {hasActiveFilters && (
