@@ -1,3 +1,4 @@
+// src/app/tienda/[productoId]/ProductDisplay.tsx
 "use client"
 
 import React, { useState, useMemo, useEffect } from 'react';
@@ -17,7 +18,6 @@ interface ProductDisplayProps {
   fallbackImageUrl: string;
 }
 
-// --- INICIO DE LA CORRECCIÓN 1: Lógica de ordenación de tallas ---
 const TALLA_ORDER: { [key: string]: number } = {
     '3XS': 1, 'XXS': 2, 'XS': 3,
     'S': 4, 'M': 5, 'L': 6,
@@ -25,25 +25,31 @@ const TALLA_ORDER: { [key: string]: number } = {
 };
 
 const sortVariants = (variants: ProductoConStock[]): ProductoConStock[] => {
+    const attrKey = (variants[0]?.atributos && Object.keys(variants[0].atributos)[0] !== 'default')
+        ? Object.keys(variants[0].atributos)[0]
+        : null;
+
     return [...variants].sort((a, b) => {
-        const aValue = (a.nombre.split(' - ')[1] || '').toUpperCase();
-        const bValue = (b.nombre.split(' - ')[1] || '').toUpperCase();
+        if (!attrKey || !a.atributos || !b.atributos) {
+            return a.nombre.localeCompare(b.nombre);
+        }
+
+        const aValue = (a.atributos[attrKey] || '').toString().toUpperCase();
+        const bValue = (b.atributos[attrKey] || '').toString().toUpperCase();
 
         const aIsTalla = TALLA_ORDER[aValue] !== undefined;
         const bIsTalla = TALLA_ORDER[bValue] !== undefined;
-
         if (aIsTalla && bIsTalla) {
             return TALLA_ORDER[aValue] - TALLA_ORDER[bValue];
         }
 
-        const aNum = parseInt(aValue.match(/\d+/)?.[0] || 'NaN', 10);
-        const bNum = parseInt(bValue.match(/\d+/)?.[0] || 'NaN', 10);
-
+        const aNum = parseFloat(aValue);
+        const bNum = parseFloat(bValue);
         if (!isNaN(aNum) && !isNaN(bNum)) {
             return aNum - bNum;
         }
         
-        return aValue.localeCompare(bValue);
+        return aValue.localeCompare(bValue, undefined, { numeric: true });
     });
 };
 
@@ -51,7 +57,6 @@ export default function ProductDisplay({ producto, variantes, fallbackImageUrl }
   const sortedVariants = useMemo(() => sortVariants(variantes), [variantes]);
   
   const [selectedVariant, setSelectedVariant] = useState<ProductoConStock | null>(sortedVariants?.[0] || null);
-  // --- FIN DE LA CORRECCIÓN 1 ---
 
   const [mainImageUrl, setMainImageUrl] = useState<string | null>(null);
 
@@ -74,7 +79,6 @@ export default function ProductDisplay({ producto, variantes, fallbackImageUrl }
         newImageUrl = galleryImages[0].url;
       }
     }
-    
     setMainImageUrl(newImageUrl);
   }, [selectedVariant, producto.imagenes, galleryImages, fallbackImageUrl]);
 
@@ -85,12 +89,7 @@ export default function ProductDisplay({ producto, variantes, fallbackImageUrl }
   const handleThumbnailClick = (url: string) => {
       setMainImageUrl(url);
   };
-
-  const precioFinalDisplay = selectedVariant?.precio_venta != null 
-    ? formatCurrency(selectedVariant.precio_venta * (1 + selectedVariant.porcentaje_impuesto / 100)) 
-    : 'Consultar';
   
-  // --- INICIO DE LA CORRECCIÓN 2: Mostrar el nombre del atributo ---
   const attributeName = useMemo(() => {
     if (sortedVariants.length > 0 && sortedVariants[0].atributos) {
       const keys = Object.keys(sortedVariants[0].atributos);
@@ -100,7 +99,17 @@ export default function ProductDisplay({ producto, variantes, fallbackImageUrl }
     }
     return null;
   }, [sortedVariants]);
-  // --- FIN DE LA CORRECCIÓN 2 ---
+
+  const getVariantLabel = (variant: ProductoConStock) => {
+    if (variant.atributos && attributeName) {
+      return variant.atributos[attributeName] || '';
+    }
+    return variant.nombre.split(' - ')[1] || 'Opción';
+  };
+  
+  const precioFinalDisplay = selectedVariant?.precio_venta != null 
+    ? formatCurrency(selectedVariant.precio_venta * (1 + selectedVariant.porcentaje_impuesto / 100)) 
+    : 'Consultar';
 
   return (
     <div className="bg-white">
@@ -138,7 +147,7 @@ export default function ProductDisplay({ producto, variantes, fallbackImageUrl }
                         "ring-2 ring-blue-500": selectedVariant?.id === variant.id
                       })}
                     >
-                      {variant.nombre.split(' - ')[1] || 'Opción única'}
+                      {getVariantLabel(variant)}
                     </Button>
                   ))}
                 </div>
