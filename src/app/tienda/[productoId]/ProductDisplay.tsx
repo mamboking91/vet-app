@@ -17,8 +17,42 @@ interface ProductDisplayProps {
   fallbackImageUrl: string;
 }
 
+// --- INICIO DE LA CORRECCIÓN 1: Lógica de ordenación de tallas ---
+const TALLA_ORDER: { [key: string]: number } = {
+    '3XS': 1, 'XXS': 2, 'XS': 3,
+    'S': 4, 'M': 5, 'L': 6,
+    'XL': 7, 'XXL': 8, '3XL': 9,
+};
+
+const sortVariants = (variants: ProductoConStock[]): ProductoConStock[] => {
+    return [...variants].sort((a, b) => {
+        const aValue = (a.nombre.split(' - ')[1] || '').toUpperCase();
+        const bValue = (b.nombre.split(' - ')[1] || '').toUpperCase();
+
+        const aIsTalla = TALLA_ORDER[aValue] !== undefined;
+        const bIsTalla = TALLA_ORDER[bValue] !== undefined;
+
+        if (aIsTalla && bIsTalla) {
+            return TALLA_ORDER[aValue] - TALLA_ORDER[bValue];
+        }
+
+        const aNum = parseInt(aValue.match(/\d+/)?.[0] || 'NaN', 10);
+        const bNum = parseInt(bValue.match(/\d+/)?.[0] || 'NaN', 10);
+
+        if (!isNaN(aNum) && !isNaN(bNum)) {
+            return aNum - bNum;
+        }
+        
+        return aValue.localeCompare(bValue);
+    });
+};
+
 export default function ProductDisplay({ producto, variantes, fallbackImageUrl }: ProductDisplayProps) {
-  const [selectedVariant, setSelectedVariant] = useState<ProductoConStock | null>(variantes?.[0] || null);
+  const sortedVariants = useMemo(() => sortVariants(variantes), [variantes]);
+  
+  const [selectedVariant, setSelectedVariant] = useState<ProductoConStock | null>(sortedVariants?.[0] || null);
+  // --- FIN DE LA CORRECCIÓN 1 ---
+
   const [mainImageUrl, setMainImageUrl] = useState<string | null>(null);
 
   const galleryImages = useMemo(() => {
@@ -55,6 +89,18 @@ export default function ProductDisplay({ producto, variantes, fallbackImageUrl }
   const precioFinalDisplay = selectedVariant?.precio_venta != null 
     ? formatCurrency(selectedVariant.precio_venta * (1 + selectedVariant.porcentaje_impuesto / 100)) 
     : 'Consultar';
+  
+  // --- INICIO DE LA CORRECCIÓN 2: Mostrar el nombre del atributo ---
+  const attributeName = useMemo(() => {
+    if (sortedVariants.length > 0 && sortedVariants[0].atributos) {
+      const keys = Object.keys(sortedVariants[0].atributos);
+      if (keys.length > 0 && keys[0] !== 'default') {
+        return keys[0];
+      }
+    }
+    return null;
+  }, [sortedVariants]);
+  // --- FIN DE LA CORRECCIÓN 2 ---
 
   return (
     <div className="bg-white">
@@ -77,11 +123,13 @@ export default function ProductDisplay({ producto, variantes, fallbackImageUrl }
               <p className="text-3xl text-gray-900">{precioFinalDisplay}</p>
             </div>
             
-            {variantes.length > 1 && (
+            {sortedVariants.length > 1 && (
               <div className="mt-6">
-                <h3 className="text-sm font-medium text-gray-900">Opciones</h3>
+                <h3 className="text-sm font-medium text-gray-900 capitalize">
+                  {attributeName || 'Opciones'}
+                </h3>
                 <div className="flex flex-wrap gap-2 mt-2">
-                  {variantes.map(variant => (
+                  {sortedVariants.map(variant => (
                     <Button
                       key={variant.id}
                       variant={selectedVariant?.id === variant.id ? 'default' : 'outline'}
