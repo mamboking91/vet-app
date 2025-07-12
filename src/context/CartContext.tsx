@@ -1,3 +1,4 @@
+// src/context/CartContext.tsx
 "use client";
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
@@ -8,9 +9,12 @@ export interface CartItem extends ProductoConStock {
   quantity: number;
 }
 
+// --- INICIO DE LA CORRECCIÓN ---
+// 1. Añadir la firma de la nueva función a la interfaz del contexto
 interface CartContextType {
   cart: CartItem[];
   addToCart: (product: ProductoConStock, quantity: number) => void;
+  addMultipleToCart: (products: (ProductoConStock & { quantity: number })[]) => void;
   removeFromCart: (productId: string) => void;
   updateQuantity: (productId: string, quantity: number) => void;
   clearCart: () => void;
@@ -22,6 +26,7 @@ interface CartContextType {
   descuentoAplicado: CodigoDescuento | null;
   montoDescuento: number;
 }
+// --- FIN DE LA CORRECCIÓN ---
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
@@ -73,6 +78,26 @@ export function CartProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  // --- INICIO DE LA CORRECCIÓN ---
+  // 2. Implementar la lógica de la función
+  const addMultipleToCart = (products: (ProductoConStock & { quantity: number })[]) => {
+    setCart(prevCart => {
+      const newCart = [...prevCart];
+      products.forEach(productToAdd => {
+        const existingItemIndex = newCart.findIndex(item => item.id === productToAdd.id);
+        if (existingItemIndex > -1) {
+          // Si el item ya existe, suma la cantidad
+          newCart[existingItemIndex].quantity += productToAdd.quantity;
+        } else {
+          // Si no existe, lo añade al carrito
+          newCart.push({ ...productToAdd });
+        }
+      });
+      return newCart;
+    });
+  };
+  // --- FIN DE LA CORRECCIÓN ---
+
   const removeFromCart = (productId: string) => {
     setCart(prevCart => prevCart.filter(item => item.id !== productId));
   };
@@ -98,9 +123,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
   
   const subtotal = cart.reduce((sum, item) => {
     const precioBase = Number(item.precio_venta) || 0;
-    const impuesto = Number(item.porcentaje_impuesto) || 0;
-    const precioConImpuesto = precioBase * (1 + impuesto / 100);
-    return sum + precioConImpuesto * item.quantity;
+    return sum + precioBase * item.quantity;
   }, 0);
 
   let montoDescuento = 0;
@@ -120,9 +143,12 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const total = subtotal - montoDescuento;
   const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
 
+  // --- INICIO DE LA CORRECCIÓN ---
+  // 3. Añadir la función al objeto 'value' para que esté disponible para los componentes consumidores
   const value = {
     cart,
     addToCart,
+    addMultipleToCart,
     removeFromCart,
     updateQuantity,
     clearCart,
@@ -134,6 +160,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     descuentoAplicado,
     montoDescuento,
   };
+  // --- FIN DE LA CORRECCIÓN ---
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 }

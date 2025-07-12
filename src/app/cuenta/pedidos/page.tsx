@@ -1,3 +1,5 @@
+// src/app/cuenta/pedidos/page.tsx
+
 import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
@@ -9,9 +11,31 @@ import { Button } from '@/components/ui/button';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { formatCurrency } from '@/lib/utils';
-import type { Pedido } from '@/app/dashboard/pedidos/types';
+import type { Pedido, EstadoPedido } from '@/app/dashboard/pedidos/types';
+import { cn } from '@/lib/utils'; // Importamos la utilidad cn
 
 export const dynamic = 'force-dynamic';
+
+// --- INICIO DE LA CORRECCIÓN ---
+// Función para obtener la clase de color según el estado del pedido
+const getStatusColor = (status: EstadoPedido) => {
+    switch (status) {
+      case 'procesando':
+        return 'bg-blue-100 text-blue-800 border-blue-200';
+      case 'enviado':
+        return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+      case 'completado':
+        return 'bg-green-100 text-green-800 border-green-200';
+      case 'cancelado':
+        return 'bg-red-100 text-red-800 border-red-200';
+      case 'pendiente_pago':
+        return 'bg-orange-100 text-orange-800 border-orange-200';
+      default:
+        return 'bg-gray-100 text-gray-800 border-gray-200';
+    }
+};
+// --- FIN DE LA CORRECCIÓN ---
+
 
 export default async function HistorialPedidosPage() {
   const supabase = createServerComponentClient({ cookies });
@@ -54,7 +78,13 @@ export default async function HistorialPedidosPage() {
                 <TableRow key={pedido.id}>
                   <TableCell className="font-medium">#{pedido.id.substring(0, 8)}</TableCell>
                   <TableCell>{format(new Date(pedido.created_at), 'dd MMM yyyy', { locale: es })}</TableCell>
-                  <TableCell><Badge variant="secondary" className="capitalize">{pedido.estado.replace('_', ' ')}</Badge></TableCell>
+                  <TableCell>
+                    {/* --- INICIO DE LA CORRECCIÓN --- */}
+                    <Badge variant="outline" className={cn("capitalize border", getStatusColor(pedido.estado))}>
+                      {pedido.estado.replace('_', ' ')}
+                    </Badge>
+                    {/* --- FIN DE LA CORRECCIÓN --- */}
+                  </TableCell>
                   <TableCell className="text-right">{formatCurrency(pedido.total)}</TableCell>
                   <TableCell className="text-right">
                     <Button asChild variant="outline" size="sm">
