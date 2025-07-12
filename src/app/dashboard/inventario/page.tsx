@@ -7,16 +7,26 @@ import { Button } from "@/components/ui/button";
 import { PlusCircle } from 'lucide-react';
 import ProductosInventarioTable from './ProductosInventarioTable';
 import type { ProductoConStock } from './types';
+import SearchInput from '@/components/ui/SearchInput'; // 1. Importar el buscador
 
 export const dynamic = 'force-dynamic';
 
-export default async function InventarioPage() {
+// 2. Añadir searchParams a las props de la página
+interface InventarioPageProps {
+  searchParams?: {
+    q?: string;
+  };
+}
+
+export default async function InventarioPage({ searchParams }: InventarioPageProps) {
   const cookieStore = cookies();
   const supabase = createServerComponentClient({ cookies: () => cookieStore });
 
-  // Consulta actualizada a la VISTA 'productos_inventario_con_stock'
-  // Seleccionamos todos los campos necesarios para la tabla.
-  const { data: productosData, error } = await supabase
+  // 3. Lógica de búsqueda
+  const searchQuery = searchParams?.q?.trim();
+
+  // La consulta base ahora es una variable que se puede modificar.
+  let query = supabase
     .from('productos_inventario_con_stock')
     .select(
       `
@@ -34,8 +44,16 @@ export default async function InventarioPage() {
         proxima_fecha_caducidad,
         imagenes
       `
-    )
-    .order('nombre', { ascending: true });
+    );
+
+  // Si hay un término de búsqueda, añadimos el filtro.
+  if (searchQuery) {
+    // Buscamos en la columna 'nombre' O en la columna 'codigo_producto' (SKU) de la vista.
+    query = query.or(`nombre.ilike.%${searchQuery}%,codigo_producto.ilike.%${searchQuery}%`);
+  }
+
+  // Añadimos el ordenamiento al final y ejecutamos la consulta.
+  const { data: productosData, error } = await query.order('nombre', { ascending: true });
 
   if (error) {
     console.error("Error fetching productos del inventario:", error);
@@ -47,7 +65,6 @@ export default async function InventarioPage() {
     );
   }
 
-  // Asegúrate de que el tipo ProductoConStock coincida con los campos seleccionados
   const productos = (productosData || []) as ProductoConStock[];
 
   return (
@@ -61,6 +78,22 @@ export default async function InventarioPage() {
           </Link>
         </Button>
       </div>
+      
+      {/* 4. Añadir el componente de búsqueda a la UI */}
+      <div className="mb-6">
+        <SearchInput
+          placeholder="Buscar por nombre o SKU..."
+          initialQuery={searchQuery || ''}
+          queryParamName="q"
+        />
+      </div>
+      
+      {searchQuery && productos.length === 0 && (
+        <p className="text-muted-foreground text-center my-4">
+          No se encontraron productos que coincidan con &quot;{searchQuery}&quot;.
+        </p>
+      )}
+      
       <ProductosInventarioTable productos={productos} />
     </div>
   );

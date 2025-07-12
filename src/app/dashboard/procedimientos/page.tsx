@@ -5,38 +5,60 @@ import { cookies } from 'next/headers';
 import Link from 'next/link';
 import { Button } from "@/components/ui/button";
 import ProcedimientosTable from './ProcedimientosTable';
-// Importamos el tipo Procedimiento desde nuestro archivo types.ts
 import type { Procedimiento } from './types'; 
+// --- INICIO DE LA CORRECCIÓN ---
+import SearchInput from '@/components/ui/SearchInput'; // 1. Importar el buscador
+// --- FIN DE LA CORRECCIÓN ---
+
 
 export const dynamic = 'force-dynamic';
 
-export default async function ProcedimientosPage() {
+// --- INICIO DE LA CORRECCIÓN ---
+// 2. Añadir searchParams a las props de la página
+interface ProcedimientosPageProps {
+  searchParams?: {
+    q?: string;
+  };
+}
+
+export default async function ProcedimientosPage({ searchParams }: ProcedimientosPageProps) {
+// --- FIN DE LA CORRECCIÓN ---
   const cookieStore = cookies();
   const supabase = createServerComponentClient({ cookies: () => cookieStore });
 
-  // Modificamos la consulta para incluir el nuevo campo porcentaje_impuesto
-  const { data: procedimientosData, error } = await supabase
+  // --- INICIO DE LA CORRECCIÓN ---
+  // 3. Lógica para la búsqueda
+  const searchQuery = searchParams?.q?.trim();
+
+  let query = supabase
     .from('procedimientos')
-    .select('id, nombre, descripcion, duracion_estimada_minutos, precio, categoria, notas_internas, porcentaje_impuesto') // <--- AÑADIDO porcentaje_impuesto
+    .select('id, nombre, descripcion, duracion_estimada_minutos, precio, categoria, notas_internas, porcentaje_impuesto')
     .order('nombre', { ascending: true });
+
+  if (searchQuery) {
+    // Filtrar por nombre o descripción si hay un término de búsqueda
+    query = query.or(`nombre.ilike.%${searchQuery}%,descripcion.ilike.%${searchQuery}%`);
+  }
+
+  const { data: procedimientosData, error } = await query;
+  // --- FIN DE LA CORRECCIÓN ---
 
   if (error) {
     console.error('Error fetching procedimientos:', error);
     return <p className="text-red-500">Error al cargar los procedimientos: {error.message}. Revisa la consola del servidor.</p>;
   }
   
-  // Mapeamos los datos asegurando que se ajustan al tipo Procedimiento
   const procedimientosProcesados: Procedimiento[] = (procedimientosData || [])
     .filter(p => p.id != null) 
     .map(p => ({
-      id: p.id, // Supabase devuelve UUID como string
+      id: p.id, 
       nombre: p.nombre,
       descripcion: p.descripcion,
       duracion_estimada_minutos: p.duracion_estimada_minutos,
-      precio: p.precio, // Asumimos que ya es number
+      precio: p.precio, 
       categoria: p.categoria,
       notas_internas: p.notas_internas,
-      porcentaje_impuesto: p.porcentaje_impuesto, // Asumimos que ya es number
+      porcentaje_impuesto: p.porcentaje_impuesto,
     }));
 
   return (
@@ -47,7 +69,24 @@ export default async function ProcedimientosPage() {
           <Link href="/dashboard/procedimientos/nuevo">Añadir Nuevo Procedimiento</Link>
         </Button>
       </div>
-      {/* Pasamos los datos procesados, que ahora incluyen porcentaje_impuesto */}
+
+      {/* --- INICIO DE LA CORRECCIÓN --- */}
+      {/* 4. Añadir el componente de búsqueda a la UI */}
+      <div className="mb-6">
+        <SearchInput 
+          placeholder="Buscar por nombre o descripción..."
+          initialQuery={searchQuery || ''}
+          queryParamName="q"
+        />
+      </div>
+      
+      {searchQuery && procedimientosProcesados.length === 0 && (
+        <p className="text-muted-foreground text-center my-4">
+          No se encontraron procedimientos que coincidan con &quot;{searchQuery}&quot;.
+        </p>
+      )}
+      {/* --- FIN DE LA CORRECCIÓN --- */}
+      
       <ProcedimientosTable procedimientos={procedimientosProcesados} />
     </div>
   );
