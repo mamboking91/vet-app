@@ -1,31 +1,17 @@
+// src/app/cuenta/mascotas/page.tsx
 import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
+// --- INICIO DE LA CORRECCIÓN ---
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+// --- FIN DE LA CORRECCIÓN ---
 import { Button } from '@/components/ui/button';
-import { PawPrint } from 'lucide-react';
+import { PlusCircle } from 'lucide-react';
+import DetailedPetCard from './components/DetailedPetCard'; 
 import type { Paciente } from '@/app/dashboard/pacientes/types';
 
 export const dynamic = 'force-dynamic';
-
-function PetCard({ pet }: { pet: Paciente }) {
-    return (
-        <Card className="hover:shadow-lg transition-shadow">
-            <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle className="text-xl">{pet.nombre}</CardTitle>
-                <PawPrint className="h-6 w-6 text-blue-500" />
-            </CardHeader>
-            <CardContent>
-                <p className="text-sm text-muted-foreground">{pet.especie} - {pet.raza}</p>
-                <p className="text-sm text-muted-foreground">Nacimiento: {new Date(pet.fecha_nacimiento).toLocaleDateString('es-ES')}</p>
-                <Button asChild className="mt-4 w-full" variant="outline">
-                    <Link href={`/cuenta/mascotas/${pet.id}`}>Ver Historial Clínico</Link>
-                </Button>
-            </CardContent>
-        </Card>
-    );
-}
 
 export default async function MisMascotasPage() {
   const supabase = createServerComponentClient({ cookies });
@@ -37,7 +23,7 @@ export default async function MisMascotasPage() {
 
   const { data: mascotas, error } = await supabase
     .from('pacientes')
-    .select('*')
+    .select('id, nombre, especie, raza, sexo, fecha_nacimiento, url_avatar') 
     .eq('propietario_id', user.id)
     .order('nombre', { ascending: true });
 
@@ -45,23 +31,35 @@ export default async function MisMascotasPage() {
     console.error("Error al obtener las mascotas del usuario:", error);
   }
 
+  const mascotasDetalladas = (mascotas as (Paciente & { url_avatar: string | null })[]) || [];
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Mis Mascotas</CardTitle>
-        <CardDescription>Consulta la información y el historial clínico de tus mascotas.</CardDescription>
+        <div className="flex justify-between items-center">
+          <div>
+            <CardTitle>Mis Mascotas</CardTitle>
+            <CardDescription>Consulta la información y el historial clínico de tus mascotas.</CardDescription>
+          </div>
+          <Button asChild>
+            <Link href="/dashboard/pacientes/nuevo">
+                <PlusCircle className="mr-2 h-4 w-4"/>
+                Añadir Mascota
+            </Link>
+          </Button>
+        </div>
       </CardHeader>
       <CardContent>
-        {mascotas && mascotas.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                {mascotas.map((pet) => (
-                    <PetCard key={pet.id} pet={pet as Paciente} />
+        {mascotasDetalladas.length > 0 ? (
+            <div className="space-y-6">
+                {mascotasDetalladas.map((pet) => (
+                    <DetailedPetCard key={pet.id} pet={pet} />
                 ))}
             </div>
         ) : (
           <div className="text-center py-10">
             <p className="text-muted-foreground">Aún no tienes mascotas registradas.</p>
-            <p className="text-sm text-muted-foreground mt-2">Contacta con la clínica para registrar a tu mascota.</p>
+            <p className="text-sm text-muted-foreground mt-2">Puedes añadir una desde el panel de control de la clínica.</p>
           </div>
         )}
       </CardContent>
