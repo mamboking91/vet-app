@@ -46,7 +46,8 @@ export type HistorialMedico = {
   tratamiento_indicado: string | null;
   notas_seguimiento: string | null;  // <-- Nombre corregido de 'notas'
   created_at: string;
-  proximo_seguimiento: string | null; // Mantenido por si existe en la BD
+  proximo_seguimiento: string | null; 
+  factura_id?: string | null;// Mantenido por si existe en la BD
 };
 
 

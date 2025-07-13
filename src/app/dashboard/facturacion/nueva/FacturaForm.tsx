@@ -1,3 +1,4 @@
+// src/app/dashboard/facturacion/nueva/FacturaForm.tsx
 "use client"
 
 import type React from "react"
@@ -51,6 +52,7 @@ interface FacturaFormProps {
   initialData?: Partial<FacturaHeaderFormData & { items: FacturaItemFormData[] }>
   facturaId?: string
   origen: 'manual' | 'historial' | 'pedido';
+  historialId?: string; // <-- AÑADIDO
 }
 
 type FieldErrors = {
@@ -70,6 +72,7 @@ export default function FacturaForm({
   initialData,
   facturaId,
   origen,
+  historialId, // <-- AÑADIDO
 }: FacturaFormProps) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -286,11 +289,14 @@ export default function FacturaForm({
 
     startTransition(async () => {
       let result;
+      // --- INICIO DE LA CORRECCIÓN ---
+      // Se pasa el historialId a la acción de creación.
       if (isEditMode && facturaId) {
         result = await actualizarFacturaConItems(facturaId, payload)
       } else {
-        result = await crearFacturaConItems(payload, origen)
+        result = await crearFacturaConItems(payload, origen, historialId)
       }
+      // --- FIN DE LA CORRECCIÓN ---
 
       if (!result.success) {
         setFormError(result.error?.message || "Ocurrió un error.")

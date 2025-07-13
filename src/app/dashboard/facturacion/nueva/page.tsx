@@ -1,3 +1,4 @@
+// src/app/dashboard/facturacion/nueva/page.tsx
 import React from 'react';
 import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
@@ -23,7 +24,6 @@ export default async function NuevaFacturaPage({ searchParams }: { searchParams?
   let initialDataForForm = {};
   let origenFactura: 'manual' | 'historial' = 'manual';
 
-  // Obtener catálogos para los selectores del formulario
   const [propietariosResult, pacientesResult, procedimientosResult, productosResult] = await Promise.all([
     supabase.from('propietarios').select('id, nombre_completo').order('nombre_completo'),
     supabase.from('pacientes').select('id, nombre, propietario_id, especie').order('nombre'),
@@ -149,6 +149,7 @@ export default async function NuevaFacturaPage({ searchParams }: { searchParams?
         productosDisponibles={productosDisponibles}
         initialData={initialDataForForm}
         origen={origenFactura} 
+        historialId={historialId} // <-- AÑADIDO
       />
     </div>
   );
